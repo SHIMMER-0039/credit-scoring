@@ -1,0 +1,13 @@
+\begin{tabular}{l*{4}{cc}}
+		\toprule
+		index & \multicolumn{2}{c}{Give} & \multicolumn{2}{c}{Shandong} & \multicolumn{2}{c}{Fannie} & \multicolumn{2}{c}{Bankfear} \\
+		& BaseStack & AAESS & BaseStack & AAESS & BaseStack & AAESS & BaseStack & AAESS \\
+		\midrule
+		Accuracy~($\uparrow$)        & 0.9401   & \textbf{0.9406} & 0.9560   & \textbf{0.9665} & 0.9211   & \textbf{0.9249} & 0.8276   & \textbf{0.9232} \\
+		AUC~($\uparrow$)             & 0.8708   & \textbf{0.8796} & 0.9101   & \textbf{0.9448} & 0.8109   & \textbf{0.8445} & 0.8131   & \textbf{0.9473} \\
+		Brier Score~($\downarrow$)   & 0.0485   & \textbf{0.0471} & 0.0370   & \textbf{0.0279} & 0.0644   & \textbf{0.0611} & 0.1282   & \textbf{0.0620} \\
+		H-measure (HM)~($\uparrow$)  & \textbf{0.3482} & 0.2889   & 0.5686   & \textbf{0.6762} & \textbf{0.1277} & 0.0923   & 0.4775   & \textbf{0.8262} \\
+		Type-I error~($\downarrow$)  & 0.0103   & \textbf{0.0061} & 0.0067   & \textbf{0.0029} & 0.0083   & \textbf{0.0007} & \textbf{0.0183} & 0.0291   \\
+		Type-II error~($\downarrow$) & \textbf{0.7581} & 0.7857   & 0.5655   & \textbf{0.4292} & \textbf{0.9250} & 0.9371   & 0.6679   & \textbf{0.2304} \\
+		\bottomrule
+	\end{tabular}

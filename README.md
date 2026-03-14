@@ -1,172 +1,69 @@
-# credit-scoring
-Adaptive Voting Stacking with Attention Mechanism for the Enhanced Credit Scoring
+# Replication package for "Adaptive Voting Stacking with Attention Mechanism for the
+Enhanced Credit Scoring"
 
-# Adaptive Voting Stacking with Attention Mechanism
+Shanshan Jiang, Lingyi Meng, Min Xia
 
-## Project Overview
+## Overview & contents
 
-This project implements an advanced credit scoring model using **Adaptive Bayesian Stacking**, a method that combines multiple base classifiers and assigns dynamic weights using a Bayesian Ridge model. The project also includes automated feature selection techniques to optimize the model's performance. This approach is designed to enhance the prediction accuracy and robustness of credit risk evaluation models.
+The code in this replication material generates the 7 figures and 19 tables for
+the paper "Evaluating Probabilistic Classifiers: The Triptych".
+Each figure and table is generated separately by its corresponding script file
+`Figure_[xx]_*.R` or `Table_[xx]_*.R`, respectively.
 
----
+The main contents of the repository are the following:
 
-## Directory Structure
+- `plots/`: folder of generated plots as PDF files
+- `tables/`: folder of generated tables as txt files
+- `data-raw/`: folder of raw data files and the functions for processing them
+- `data/`: folder of processed data files
+- `Figure_[xx]_*.R`: R scripts to create the respective figures
+- `Table_[xx]_*.R`: R scripts to create the respective tables
 
-```plaintext
-Adaptive Voting Stacking with Attention Mechanism
-│
-├── compare
-│   ├── herter/                 # Supporting experiment files
-│   ├── HETER/                  # Experiment data folder
-│   ├── rador/                  # Experiment-related data
-│   ├── ranked/                 # Supporting ranked features data
-│   ├── bankfear.py             # Bankfear dataset experiment
-│   ├── diff_pict.py            # Comparison of different graphs
-│   ├── fannie.py               # Experiment using Fannie Mae dataset
-│   ├── feature_othermethod.py  # Other feature selection methods
-│   ├── give.py                 # Feature analysis script
-│   ├── shandong.py             # Experiments on Shandong dataset
-│   ├── tiqv.py                 # Experiments on TIQV dataset
-│   └── real_feature.py         # Feature extraction for experiments
-│
-├── diff dataset                # Datasets folder
-│   ├── bankfear/               # Bankfear dataset
-│   ├── fannie/                 # Fannie Mae dataset
-│   ├── give/                   # Give dataset
-│   ├── shandong/               # Shandong dataset
-│
-├── main
-│   ├── adaptive_bayesian_stacking.py # Main model implementation
-│   ├── feature_selection.py          # Feature selection logic
-│   ├── important_score/              # Feature importance utilities
-│   ├── read.py                       # Data loading utilities
-│   ├── test.py                       # Entry point for main experiments
-│
-├── old                              # Deprecated or backup scripts
-│   ├── cal_metrics.py               # Metric calculation utilities
-│   ├── read.py                      # Data loading utilities
-│   ├── realtext.py                  # Real dataset analysis script
-│   ├── Tree-based heterogeneous cascade
-│   └── yizhi.py                     # "Yizhi" model experiment script
-│
-├── venv                             # Python virtual environment (optional)
-├── img.png                          # Supporting image for documentation
-├── lime.ipynb                       # LIME explanation method experiments
-└── stacking.py                      # Stacking model implementation
+
+## Instructions & computational requirements.
+
+All file paths are relative to the root of the replication package. Please set your working directory accordingly, or open the `.Rproj` file using RStudio.
+
+The analysis files `Figure_[xx]_*.R` and `Table_[xx]_*.R` can be run individually, in any order.
+
+These analyses were run on R 4.3.1, and we explicitly use the following packages in the analysis files: `triptych` (0.1.2), `ggplot2` (3.4.3), `patchwork` (1.1.3), `dplyr` (1.1.3), `tidyr` (1.3.0), `purrr` (1.0.2), `grid` (base R), `lubridate` (1.9.2).
+
+A comprehensive list of dependencies can be found in the `renv.lock` file. For a convenient setup in a (local) R session, we recommend using the `renv` package. The following steps are required once:
+```
+# install.packages("renv")
+renv::activate()
+renv::restore() # install dependencies
+renv::status() # check environment
 ```
 
----
+## Data availability and provenance
 
-## Requirements
+### Solar Flare Forecasts
 
-Before running the code, make sure the following dependencies are installed:
-
-- **Python 3.8+**
-- Libraries:
-  - `numpy`
-  - `pandas`
-  - `scikit-learn`
-  - `xgboost`
-  - `lightgbm`
-  - `scipy`
-  - `matplotlib`
-
-Install dependencies using the following command:
-
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## Data Path Configuration
-
-The following paths need to be configured properly in the main script:
-
-- **Dataset path:**
-  - `dataset_path`: Root directory for credit scoring datasets (e.g., `D:/study/credit_scoring_datasets/`)
-- **Output path:**
-  - `save_path`: Directory for saving model results (e.g., `D:/study/second/outcome/`)
-
-Ensure that these paths are correctly set before running the code.
-
----
-
-## How to Run
-
-### 1. Run the Main Program
-
-To perform feature selection and train the model, execute the following command:
-
-```bash
-python main/test.py
-```
-
-### 2. Run Dataset-specific Experiments
-
-You can run specific experiments on datasets using scripts in the `compare` directory. For example, to run the Fannie Mae dataset experiment:
-
-```bash
-python compare/fannie.py
-```
-
-### 3. View Results
-
-All results will be saved in the `save_path` directory as `.pickle` files. You can load and inspect them using the following code:
-
-```python
-import pickle
-
-file_path = "path_to_saved_file"
-with open(file_path, 'rb') as f:
-    results = pickle.load(f)
-print(results)
-```
-
----
-
-## Features
-
-1. **Adaptive Bayesian Stacking:**
-
-   - Dynamically assigns weights to classifiers using a Bayesian Ridge model.
-   - Combines multiple base models (RandomForest, XGBoost, LightGBM) for robust predictions.
-
-2. **Automated Feature Selection:**
-
-   - Iteratively applies feature selection techniques with Pareto efficiency optimization.
-   - Includes methods such as classifier-based feature evaluation and correlation-based filtering.
-
-3. **Comprehensive Evaluation Metrics:**
-
-   - Supports multiple classification metrics: AUC, Precision, Recall, F1, Brier Score, and more.
-
-4. **GPU Support:**
-
-   - Leverages GPU acceleration for XGBoost and LightGBM, making it suitable for large datasets.
-
----
-
-## Results
-
-The best model's performance is evaluated using the following metrics:
-
-- **Accuracy**
-- **ROC AUC**
-- **Precision and Recall**
-- **F1 Score**
-- **Brier Score**
-- **Log Loss**
-- **Type 1 and Type 2 Errors**
-
-The saved results include these metrics for each experiment and grid search combination.
-
----
-
-## Contact
-
-If you have any questions or suggestions, please feel free to reach out to the project author.
-
----
+The prepared forecast-observation data are located at `data/C1_flares.rda` and `data/M1_flares.rda`, for the classes C1.0+ and M1.0+ of solar flare intensity. These files are generated by the script `data-raw/prepare_SolarFlares.R` using the pre-processed data files `SF.FC.C1.rda` and `SF.FC.M1.rda` from Dimitriadis and Jordan (2021, https://doi.org/10.5281/zenodo.4699945). That replication package contains a description of the pre-processing of the original data on solar flares from Leka and Park (2019, https://doi.org/10.7910/DVN/HYP74O).
 
 
+### SPF Forecasts for Economic Recessions
 
+The prepared forecast-observation data are located at `data/spf.gpd.long.rda`. They are also available from Dimitriadis and Jordan (2021, https://doi.org/10.5281/zenodo.4699945), a replication package that contains a description of the pre-processing of the original data from the Federal Reserve Bank of Philadelphia (https://www.philadelphiafed.org/surveys-and-data/).
+
+
+### Fragile Family Challenge
+
+The Fragile Family Challenge (FFC) is a scientific mass collaboration where 160
+teams built predictions for six variables, where we analyze two binary ones (eviction and
+job training). The prepared forecast and outcome data are located in the `data/` folder, as files `FFC_Eviction.rda` and `FFC_JobTraining.rda`.
+
+The forecasts (submissions) of the 160 teams together with the
+realizations originate from Salganik et al (2020, https://doi.org/10.7910/DVN/CXSECU), located in the `data/derived/submissions.csv.zip` file. The 9 benchmark forecasts have to be generated separately by obtaining data files from
+https://opr.princeton.edu/archive/ as described in Salganik et al (2020).
+We prepare the FFC data using these two (in this repository unavailable) files within the script `prepare_FragileFamilyChallenge.R`.
+
+
+## References
+
+Dimitriadis T, Jordan AI. 2021. Replication package for "Stable reliability diagrams for probabilistic classifiers" (v1.0.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.4699946
+
+Leka KD, Park S. 2019. A Comparison of Flare Forecasting Methods II: Data and Supporting Code. Harvard Dataverse, V1, UNF:6:yz1noMojlzL7SZM+9flXhQ== [fileUNF]. https://doi.org/10.7910/DVN/HYP74O
+
+Salganik M, Lundberg I, Kindel A, McLanahan S. 2020. Replication materials for "Measuring the predictability of life outcomes using a scientific mass collaboration". Harvard Dataverse, V3, UNF:6:Cj8wiioSf8JGyRLcDo5d3w== [fileUNF]. https://doi.org/10.7910/DVN/CXSECU

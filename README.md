@@ -1,5 +1,4 @@
-# Replication package for "Adaptive Voting Stacking with Attention Mechanism for the
-Enhanced Credit Scoring"
+# Replication package for "Adaptive Voting Stacking with Attention Mechanism for the Enhanced Credit Scoring"
 
 Shanshan Jiang, Lingyi Meng, Min Xia
 

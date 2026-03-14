@@ -134,6 +134,11 @@ python models/HO_ablation.py
 
 This script compares homogeneous stacking, heterogeneous stacking, and the proposed AAESS model.
 
+### Additional note on experimental results
+
+Due to the stochastic nature of machine learning algorithms and data sampling procedures, the results of individual runs may exhibit slight variations across different executions. To mitigate this effect and obtain more stable results, the example scripts included in this repository perform a limited grid search over several model parameters in order to identify better-performing configurations.
+
+In addition, the running times reported in the main paper correspond to the execution time of the base learning models after the feature selection stage has been completed. That is, the reported time measurements do not include the feature selection process itself but only the training time of the subsequent classification models.
 
 ## References
 

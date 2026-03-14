@@ -86,7 +86,11 @@ class RobustWeightingModule:
 
     def _normalize_sample_weights(self, w: np.ndarray) -> np.ndarray:
         w = np.asarray(w, dtype=float)
-        w = np.maximum(w, 1e-12)
+
+        # 【关键修复】：将下限从 1e-12 提升到 0.05
+        # 信用评分数据中违约者特征常常呈现“异常”状态。
+        # 设置 0.05 的底线，确保违约样本即使被 Huber 判定为异常，也绝不会被模型彻底抛弃。
+        w = np.clip(w, a_min=0.05, a_max=None)
 
         if self.normalize_weights:
             w = w / np.mean(w)

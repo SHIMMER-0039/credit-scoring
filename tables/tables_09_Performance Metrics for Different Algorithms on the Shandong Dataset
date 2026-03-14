@@ -7,7 +7,7 @@
 		& \textbf{HM}~($\uparrow$)
 		& \textbf{Type-I error}~($\downarrow$)
 		& \textbf{Type-II error}~($\downarrow$) \\
-		\midrule
+		\midrule 
 		LDA       & 0.93300 & 0.82830 & 0.05526 & 0.36364 & 0.00775 & 0.88764 \\
 		LR        & 0.93325 & 0.61332 & 0.06408 & 0.34251 & \textbf{0.00000} & 0.91386 \\
 		DT        & 0.93675 & 0.75920 & 0.06325 & 0.40474 & 0.03335 & 0.79452 \\

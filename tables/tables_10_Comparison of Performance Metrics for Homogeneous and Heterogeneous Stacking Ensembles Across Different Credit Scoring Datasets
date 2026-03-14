@@ -48,7 +48,7 @@
 			e-II~($\downarrow$)
 			& 0.98260 & 0.99707 & 0.97905 & 0.99600 & 0.94797 & 0.94141
 			& & 0.94530 & 0.98290 & 0.95082 & \textbf{0.93708} \\
-			
+			 
 			\midrule
 			\multicolumn{12}{l}{\textbf{Bankfear}} \\
 			Accuracy~($\uparrow$)

@@ -1,0 +1,7 @@
+	\begin{tabular}{@{}lccc@{}}
+		\toprule
+		\textbf{Dataset} & \textbf{Samples} & \textbf{Features} & \textbf{Good/Bad} \\
+		\midrule
+		Australian & 690 & 14 & 307/383 \\
+		\bottomrule
+	\end{tabular}

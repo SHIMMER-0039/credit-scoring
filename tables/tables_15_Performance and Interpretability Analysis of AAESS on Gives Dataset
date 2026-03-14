@@ -2,7 +2,7 @@
 		\toprule
 		\textbf{Metric} & \textbf{Value} \\
 		\midrule
-		Accuracy (ACC)     & 0.9412 \\
+		Accuracy (ACC)     & 0.9412 \\ 
 		AUC                & 0.8811 \\
 		LogLoss            & 0.2469 \\
 		KS                 & 0.5493 \\

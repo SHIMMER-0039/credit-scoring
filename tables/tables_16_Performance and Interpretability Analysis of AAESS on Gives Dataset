@@ -1,0 +1,33 @@
+	\begin{tabular}{lcc}
+		\toprule
+		\textbf{Metric} & \textbf{Value} \\
+		\midrule
+		Accuracy (ACC)     & 0.9412 \\
+		AUC                & 0.8811 \\
+		LogLoss            & 0.2469 \\
+		KS                 & 0.5493 \\
+		Precision          & 0.4786 \\
+		Recall             & 0.2278 \\
+		F1-score           & 0.3072 \\
+		Brier Score        & 0.0468 \\
+		Average Precision  & 0.3514 \\
+		\midrule
+		\textbf{Top Meta Coefficients (|value|)} & \textbf{Coefficient} \\
+		\midrule
+		RF\_awp                                & 44.216 \\
+		LGB\_awp                               & 3.485 \\
+		XGB\_awp                               & 3.294 \\
+		\midrule
+		\textbf{Average Attention (test)} & \textbf{Value} \\
+		\midrule
+		XGB                                    & 0.3375 \\
+		RF                                     & 0.3302 \\
+		LGB                                    & 0.3323 \\
+		\midrule
+		\textbf{Normalized Learner Contributions} & \textbf{Value} \\
+		\midrule
+		XGB                                    & 7.21\% \\
+		RF                                     & 84.96\% \\
+		LGB                                    & 7.83\% \\
+		\bottomrule
+	\end{tabular}

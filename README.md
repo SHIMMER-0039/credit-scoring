@@ -56,7 +56,7 @@ Before running the experiments, please install the required Python dependencies 
 pip install -r requirements.txt
 
 
-The experiments were conducted using Python 3.10.
+The experiments were conducted using Python 3.8.
 
 The main Python packages used in the experiments include:
 

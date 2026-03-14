@@ -1,8 +1,8 @@
-Replication package for "Adaptive Voting Stacking with Attention Mechanism for the Enhanced Credit Scoring"
+# Replication package for "Adaptive Voting Stacking with Attention Mechanism for the Enhanced Credit Scoring"
 
 Shanshan Jiang, Lingyi Meng, Min Xia
 
-Overview & contents
+## Overview & contents
 
 The code in this replication material reproduces the experimental results reported in the paper "Adaptive Voting Stacking with Attention Mechanism for the Enhanced Credit Scoring".
 
@@ -46,7 +46,8 @@ feature_ablation.py: script used to run the feature ablation experiments
 
 HO_ablation.py: script used to compare homogeneous and heterogeneous stacking ensembles
 
-Instructions & computational requirements
+
+## Instructions & computational requirements.
 
 All file paths are relative to the root of the replication package.
 
@@ -80,9 +81,7 @@ requirements.txt
 
 All experiment scripts can be run individually, in any order.
 
-Data availability and provenance
-Credit scoring dataset
-
+## Data availability and provenance
 The raw datasets used in the experiments are located in:
 
 data-raw/
@@ -108,18 +107,15 @@ data/shandong_shuffle_index.pickle
 
 
 These shuffle index files ensure that all experiments use the same data partitions for reproducibility.
-
-Running the experiments
-Main AAESS experiment
+### Running the experiments
 
 To reproduce the main experimental results reported in the paper, run:
 
 python models/fannie_test.py
 
-
 This script trains and evaluates the proposed AAESS model on the credit scoring dataset.
 
-Feature ablation experiment
+### Feature ablation experiment
 
 To reproduce the feature ablation experiments, run:
 
@@ -128,7 +124,8 @@ python models/feature_ablation.py
 
 This script evaluates the effect of the feature selection component on model performance.
 
-Homogeneous vs heterogeneous stacking experiment
+
+### Homogeneous vs heterogeneous stacking experiment
 
 To reproduce the stacking ensemble comparison experiments, run:
 
@@ -137,7 +134,8 @@ python models/HO_ablation.py
 
 This script compares homogeneous stacking, heterogeneous stacking, and the proposed AAESS model.
 
-References
+
+## References
 
 If you use this code, please cite the following paper:
 

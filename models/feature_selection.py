@@ -1,370 +1,234 @@
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass, asdict
-from typing import Dict, List, Optional, Sequence, Tuple
-
 import numpy as np
 import pandas as pd
 
-from main.feature_selection import FeatureEvaluator, is_pareto_efficient, evaluate_model
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.feature_selection import mutual_info_classif
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+)
 
 
-@dataclass
-class FeatureSubsetResult:
-    """Store one candidate subset and its evaluation results."""
-    method: str
-    selected_indices: List[int]
-    selected_names: List[str]
-    threshold: float
-    n_features: int
-    metrics: Dict[str, float]
-    pareto_efficient: bool = False
-    refinement_applied: bool = False
-
-
-class PaperFeatureSelector:
+class FeatureEvaluator:
     """
-    Feature selection pipeline aligned with the manuscript description.
+    Unified feature evaluator.
 
-    Workflow:
-    1. Run each feature selection method independently on the original feature space.
-    2. Remove features whose importance score is below threshold.
-    3. Evaluate each candidate subset on validation data using a common model.
-    4. Apply Pareto efficiency test across all candidate subsets.
-    5. Choose one subset from Pareto front using priority rules:
-       - higher AUC
-       - higher Recall
-       - fewer features
-    6. Optional final refinement using ReliefFE.
-
-    Notes:
-    - This implementation follows the paper description more closely than the
-      earlier sequential-union implementation.
-    - Threshold can be interpreted as absolute 0.05 or relative 5% of max score.
+    Supported methods:
+    - ClassifierFE   : RandomForest feature importance
+    - CorrelationFE  : absolute Pearson correlation with target
+    - GainRFE        : RandomForest importance as a gain-based proxy
+    - InfoGainFE     : mutual information
+    - ReliefFE       : simple class-separation score
     """
 
     def __init__(
         self,
-        methods: Optional[Sequence[str]] = None,
-        threshold_mode: str = "relative",
-        threshold_value: float = 0.05,
-        final_refine_method: Optional[str] = "ReliefFE",
-        min_features: int = 1,
-        verbose: bool = True,
+        method: str = "ClassifierFE",
+        random_state: int = 42,
+        n_estimators: int = 200,
     ) -> None:
-        """
-        Args:
-            methods: feature selection methods used to generate candidate subsets.
-            threshold_mode: 'relative' or 'absolute'.
-                - 'relative': threshold = threshold_value * max(score)
-                - 'absolute': threshold = threshold_value
-            threshold_value: threshold parameter.
-            final_refine_method: final refinement method. Set to None to disable.
-            min_features: minimum number of features to keep.
-            verbose: print progress.
-        """
-        if methods is None:
-            methods = [
-                "ClassifierFE",
-                "CorrelationFE",
-                "GainRFE",
-                "InfoGainFE",
-                "ReliefFE",
-            ]
+        self.method = method
+        self.random_state = random_state
+        self.n_estimators = n_estimators
+        self.scores_: np.ndarray | None = None
 
-        self.methods = list(methods)
-        self.threshold_mode = threshold_mode
-        self.threshold_value = threshold_value
-        self.final_refine_method = final_refine_method
-        self.min_features = min_features
-        self.verbose = verbose
+    def fit(self, X, y) -> "FeatureEvaluator":
+        X_np = self._to_numpy_x(X)
+        y_np = self._to_numpy_y(y)
 
-        self.results_: List[FeatureSubsetResult] = []
-        self.best_result_: Optional[FeatureSubsetResult] = None
-        self.selected_indices_: Optional[List[int]] = None
-        self.selected_names_: Optional[List[str]] = None
+        if self.method == "ClassifierFE":
+            self.scores_ = self._classifier_fe(X_np, y_np)
 
-    def _log(self, msg: str) -> None:
-        if self.verbose:
-            print(msg)
+        elif self.method == "CorrelationFE":
+            self.scores_ = self._correlation_fe(X_np, y_np)
 
-    def _compute_threshold(self, scores: np.ndarray) -> float:
-        if self.threshold_mode == "relative":
-            return float(self.threshold_value * np.max(scores))
-        if self.threshold_mode == "absolute":
-            return float(self.threshold_value)
-        raise ValueError("threshold_mode must be either 'relative' or 'absolute'")
+        elif self.method == "GainRFE":
+            self.scores_ = self._gain_rfe(X_np, y_np)
 
-    def _safe_select_indices(self, scores: np.ndarray) -> List[int]:
-        threshold = self._compute_threshold(scores)
-        selected = np.where(scores > threshold)[0].tolist()
+        elif self.method == "InfoGainFE":
+            self.scores_ = self._info_gain_fe(X_np, y_np)
 
-        # Ensure at least min_features are retained
-        if len(selected) < self.min_features:
-            ranked = np.argsort(scores)[::-1]
-            selected = ranked[: self.min_features].tolist()
+        elif self.method == "ReliefFE":
+            self.scores_ = self._relief_fe(X_np, y_np)
 
-        return sorted(selected)
+        else:
+            raise ValueError(f"Unsupported feature selection method: {self.method}")
 
-    def _evaluate_subset(
-        self,
-        method: str,
-        feature_indices: List[int],
-        feature_names: List[str],
-        threshold: float,
-        train_x: pd.DataFrame,
-        train_y: pd.Series,
-        valid_x: pd.DataFrame,
-        valid_y: pd.Series,
-    ) -> FeatureSubsetResult:
-        train_sub = train_x.iloc[:, feature_indices].values
-        valid_sub = valid_x.iloc[:, feature_indices].values
-
-        metric_values = evaluate_model(train_sub, train_y, valid_sub, valid_y)
-
-        # IMPORTANT:
-        # We assume evaluate_model returns metrics in this order:
-        # [Accuracy, AUC, Precision, Recall]
-        # If your evaluate_model has another order, update the mapping below.
-        metrics = {
-            "acc": float(metric_values[0]),
-            "auc": float(metric_values[1]),
-            "precision": float(metric_values[2]),
-            "recall": float(metric_values[3]),
-        }
-
-        return FeatureSubsetResult(
-            method=method,
-            selected_indices=feature_indices,
-            selected_names=feature_names,
-            threshold=float(threshold),
-            n_features=len(feature_indices),
-            metrics=metrics,
-        )
-
-    @staticmethod
-    def _pareto_matrix(results: List[FeatureSubsetResult]) -> np.ndarray:
-        """
-        Build objective matrix for Pareto test.
-        Larger is better for acc, auc, precision, recall.
-        """
-        return np.array(
-            [
-                [
-                    r.metrics["acc"],
-                    r.metrics["auc"],
-                    r.metrics["precision"],
-                    r.metrics["recall"],
-                ]
-                for r in results
-            ]
-        )
-
-    @staticmethod
-    def _choose_best_from_pareto(results: List[FeatureSubsetResult]) -> FeatureSubsetResult:
-        """
-        Choose final subset from Pareto front.
-        Priority:
-        1. higher AUC
-        2. higher Recall
-        3. fewer features
-        4. higher Accuracy
-        """
-        pareto_results = [r for r in results if r.pareto_efficient]
-        if not pareto_results:
-            raise RuntimeError("No Pareto-efficient subset found.")
-
-        pareto_results = sorted(
-            pareto_results,
-            key=lambda r: (
-                -r.metrics["auc"],
-                -r.metrics["recall"],
-                r.n_features,
-                -r.metrics["acc"],
-            )
-        )
-        return pareto_results[0]
-
-    def _run_one_method(
-        self,
-        method: str,
-        train_x: pd.DataFrame,
-        train_y: pd.Series,
-        valid_x: pd.DataFrame,
-        valid_y: pd.Series,
-    ) -> FeatureSubsetResult:
-        evaluator = FeatureEvaluator(method=method)
-        evaluator.fit(train_x.values, train_y)
-
-        scores = np.asarray(evaluator.scores_, dtype=float)
-        threshold = self._compute_threshold(scores)
-        selected_indices = self._safe_select_indices(scores)
-        selected_names = train_x.columns[selected_indices].tolist()
-
-        result = self._evaluate_subset(
-            method=method,
-            feature_indices=selected_indices,
-            feature_names=selected_names,
-            threshold=threshold,
-            train_x=train_x,
-            train_y=train_y,
-            valid_x=valid_x,
-            valid_y=valid_y,
-        )
-
-        self._log(
-            f"[{method}] threshold={threshold:.6f}, "
-            f"n_features={result.n_features}, metrics={result.metrics}"
-        )
-        return result
-
-    def _refine_with_relief(
-        self,
-        base_result: FeatureSubsetResult,
-        train_x: pd.DataFrame,
-        train_y: pd.Series,
-        valid_x: pd.DataFrame,
-        valid_y: pd.Series,
-    ) -> FeatureSubsetResult:
-        """
-        Final refinement using ReliefFE on the selected subset.
-        Keeps only features re-confirmed by ReliefFE in the reduced space.
-        """
-        if self.final_refine_method is None:
-            return base_result
-
-        if self.final_refine_method != "ReliefFE":
-            raise ValueError("Only ReliefFE refinement is currently supported.")
-
-        if base_result.n_features <= self.min_features:
-            return base_result
-
-        reduced_train = train_x.iloc[:, base_result.selected_indices]
-
-        evaluator = FeatureEvaluator(method="ReliefFE")
-        evaluator.fit(reduced_train.values, train_y)
-
-        scores = np.asarray(evaluator.scores_, dtype=float)
-        threshold = self._compute_threshold(scores)
-        local_indices = self._safe_select_indices(scores)
-
-        refined_global_indices = [base_result.selected_indices[i] for i in local_indices]
-        refined_global_names = train_x.columns[refined_global_indices].tolist()
-
-        refined_result = self._evaluate_subset(
-            method=f"{base_result.method}+ReliefFE",
-            feature_indices=refined_global_indices,
-            feature_names=refined_global_names,
-            threshold=threshold,
-            train_x=train_x,
-            train_y=train_y,
-            valid_x=valid_x,
-            valid_y=valid_y,
-        )
-        refined_result.refinement_applied = True
-
-        # Keep refined subset only if it is not worse in Pareto sense vs original best
-        compare = np.array([
-            [
-                base_result.metrics["acc"],
-                base_result.metrics["auc"],
-                base_result.metrics["precision"],
-                base_result.metrics["recall"],
-            ],
-            [
-                refined_result.metrics["acc"],
-                refined_result.metrics["auc"],
-                refined_result.metrics["precision"],
-                refined_result.metrics["recall"],
-            ],
-        ])
-        mask = is_pareto_efficient(compare)
-
-        self._log(
-            f"[ReliefFE refinement] base={base_result.metrics}, refined={refined_result.metrics}, "
-            f"accepted={bool(mask[1])}"
-        )
-
-        if bool(mask[1]):
-            return refined_result
-        return base_result
-
-    def fit(
-        self,
-        train_x: pd.DataFrame,
-        train_y: pd.Series,
-        valid_x: pd.DataFrame,
-        valid_y: pd.Series,
-    ) -> "PaperFeatureSelector":
-        """Run complete feature selection pipeline."""
-        self.results_ = []
-
-        # 1. Generate candidate subsets independently
-        for method in self.methods:
-            result = self._run_one_method(method, train_x, train_y, valid_x, valid_y)
-            self.results_.append(result)
-
-        # 2. Pareto test across all candidate subsets
-        score_matrix = self._pareto_matrix(self.results_)
-        pareto_mask = is_pareto_efficient(score_matrix)
-
-        for i, flag in enumerate(pareto_mask):
-            self.results_[i].pareto_efficient = bool(flag)
-
-        self._log("\nPareto-efficient subsets:")
-        for res in self.results_:
-            if res.pareto_efficient:
-                self._log(
-                    f"  - {res.method}: auc={res.metrics['auc']:.6f}, "
-                    f"recall={res.metrics['recall']:.6f}, n_features={res.n_features}"
-                )
-
-        # 3. Choose final subset from Pareto front
-        best = self._choose_best_from_pareto(self.results_)
-
-        # 4. Optional ReliefFE refinement
-        best = self._refine_with_relief(best, train_x, train_y, valid_x, valid_y)
-
-        self.best_result_ = best
-        self.selected_indices_ = best.selected_indices
-        self.selected_names_ = best.selected_names
-
-        self._log(
-            f"\nFinal selected subset: method={best.method}, "
-            f"n_features={best.n_features}, features={best.selected_names}"
-        )
+        self.scores_ = np.asarray(self.scores_, dtype=float)
+        self.scores_ = np.nan_to_num(self.scores_, nan=0.0, posinf=0.0, neginf=0.0)
 
         return self
 
-    def transform(self, x: pd.DataFrame) -> pd.DataFrame:
-        """Return data with selected features only."""
-        if self.selected_indices_ is None:
-            raise RuntimeError("fit must be called before transform.")
-        return x.iloc[:, self.selected_indices_].copy()
+    @staticmethod
+    def _to_numpy_x(X) -> np.ndarray:
+        if isinstance(X, pd.DataFrame):
+            X = X.values
+        X = np.asarray(X, dtype=float)
+        X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+        return X
 
-    def fit_transform(
-        self,
-        train_x: pd.DataFrame,
-        train_y: pd.Series,
-        valid_x: pd.DataFrame,
-        valid_y: pd.Series,
-    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        self.fit(train_x, train_y, valid_x, valid_y)
-        return self.transform(train_x), self.transform(valid_x)
+    @staticmethod
+    def _to_numpy_y(y) -> np.ndarray:
+        if isinstance(y, (pd.Series, pd.DataFrame)):
+            y = np.asarray(y).ravel()
+        else:
+            y = np.asarray(y).ravel()
+        return y
 
-    def save_report(self, path: str) -> None:
-        """Save feature selection report for reproducibility."""
-        if self.best_result_ is None:
-            raise RuntimeError("No results available. Call fit first.")
+    def _classifier_fe(self, X: np.ndarray, y: np.ndarray) -> np.ndarray:
+        model = RandomForestClassifier(
+            n_estimators=self.n_estimators,
+            random_state=self.random_state,
+            n_jobs=-1,
+        )
+        model.fit(X, y)
+        return model.feature_importances_
 
-        report = {
-            "threshold_mode": self.threshold_mode,
-            "threshold_value": self.threshold_value,
-            "methods": self.methods,
-            "final_refine_method": self.final_refine_method,
-            "best_result": asdict(self.best_result_),
-            "all_results": [asdict(r) for r in self.results_],
-        }
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(report, f, indent=2, ensure_ascii=False)
+    def _correlation_fe(self, X: np.ndarray, y: np.ndarray) -> np.ndarray:
+        scores = np.zeros(X.shape[1], dtype=float)
+
+        for j in range(X.shape[1]):
+            xj = X[:, j]
+
+            if np.std(xj) == 0:
+                scores[j] = 0.0
+                continue
+
+            corr = np.corrcoef(xj, y)[0, 1]
+            if np.isnan(corr):
+                corr = 0.0
+            scores[j] = abs(corr)
+
+        return scores
+
+    def _gain_rfe(self, X: np.ndarray, y: np.ndarray) -> np.ndarray:
+        """
+        Practical proxy implementation:
+        use RandomForest feature importance as a gain-based ranking signal.
+        """
+        model = RandomForestClassifier(
+            n_estimators=self.n_estimators,
+            random_state=self.random_state,
+            n_jobs=-1,
+        )
+        model.fit(X, y)
+        return model.feature_importances_
+
+    def _info_gain_fe(self, X: np.ndarray, y: np.ndarray) -> np.ndarray:
+        scores = mutual_info_classif(
+            X,
+            y,
+            random_state=self.random_state,
+            discrete_features="auto",
+        )
+        return np.asarray(scores, dtype=float)
+
+    def _relief_fe(self, X: np.ndarray, y: np.ndarray) -> np.ndarray:
+        """
+        Lightweight Relief-style surrogate:
+        class mean separation normalized by within-class variance.
+        """
+        pos_mask = (y == 1)
+        neg_mask = (y == 0)
+
+        if pos_mask.sum() == 0 or neg_mask.sum() == 0:
+            return np.zeros(X.shape[1], dtype=float)
+
+        X_pos = X[pos_mask]
+        X_neg = X[neg_mask]
+
+        pos_mean = np.mean(X_pos, axis=0)
+        neg_mean = np.mean(X_neg, axis=0)
+
+        pos_var = np.var(X_pos, axis=0)
+        neg_var = np.var(X_neg, axis=0)
+
+        scores = np.abs(pos_mean - neg_mean) / (pos_var + neg_var + 1e-12)
+        return scores
+
+
+def is_pareto_efficient(values: np.ndarray) -> np.ndarray:
+    """
+    Pareto efficiency under the convention: larger is better for every metric.
+
+    Parameters
+    ----------
+    values : np.ndarray
+        Shape (n_points, n_metrics)
+
+    Returns
+    -------
+    np.ndarray
+        Boolean mask of shape (n_points,), True if the point is Pareto efficient.
+    """
+    values = np.asarray(values, dtype=float)
+    n_points = values.shape[0]
+    efficient = np.ones(n_points, dtype=bool)
+
+    for i in range(n_points):
+        if not efficient[i]:
+            continue
+
+        dominates_i = np.all(values >= values[i], axis=1) & np.any(values > values[i], axis=1)
+        dominates_i[i] = False
+
+        if np.any(dominates_i):
+            efficient[i] = False
+
+    return efficient
+
+
+def evaluate_model(train_x, train_y, valid_x, valid_y) -> np.ndarray:
+    """
+    Evaluate a validation backbone model for feature subset comparison.
+
+    Returns metrics in this exact order:
+    [Accuracy, AUC, Precision, Recall]
+    """
+    X_train = _to_numpy(train_x)
+    y_train = _to_numpy_1d(train_y)
+    X_valid = _to_numpy(valid_x)
+    y_valid = _to_numpy_1d(valid_y)
+
+    model = RandomForestClassifier(
+        n_estimators=200,
+        random_state=42,
+        n_jobs=-1,
+    )
+    model.fit(X_train, y_train)
+
+    pred = model.predict(X_valid)
+
+    if hasattr(model, "predict_proba"):
+        pred_proba = model.predict_proba(X_valid)[:, 1]
+    else:
+        pred_proba = pred.astype(float)
+
+    pred_proba = np.clip(pred_proba, 1e-12, 1 - 1e-12)
+
+    acc = accuracy_score(y_valid, pred)
+    auc = roc_auc_score(y_valid, pred_proba)
+    prec = precision_score(y_valid, pred, zero_division=0)
+    rec = recall_score(y_valid, pred, zero_division=0)
+
+    return np.array([acc, auc, prec, rec], dtype=float)
+
+
+def _to_numpy(x) -> np.ndarray:
+    if isinstance(x, pd.DataFrame):
+        x = x.values
+    x = np.asarray(x, dtype=float)
+    x = np.nan_to_num(x, nan=0.0, posinf=0.0, neginf=0.0)
+    return x
+
+
+def _to_numpy_1d(y) -> np.ndarray:
+    if isinstance(y, (pd.Series, pd.DataFrame)):
+        y = np.asarray(y).ravel()
+    else:
+        y = np.asarray(y).ravel()
+    return y

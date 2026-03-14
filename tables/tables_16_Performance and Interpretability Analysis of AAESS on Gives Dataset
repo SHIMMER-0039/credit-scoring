@@ -1,6 +1,6 @@
 	\begin{tabular}{lcc}
 		\toprule
-		\textbf{Metric} & \textbf{Value} \\
+		\textbf{Metric} & \textbf{Value} \\ 
 		\midrule
 		Accuracy (ACC)     & 0.9412 \\
 		AUC                & 0.8811 \\

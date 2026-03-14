@@ -189,7 +189,7 @@ class OutlierDetector:
         self._log(f"  Selected weighting model: {self.result_.selected_weighting_model}")
 
         return self
-
+ 
     def get_outlier_mask(self) -> np.ndarray:
         if self.majority_vote_mask_ is None:
             raise RuntimeError("Call fit() before get_outlier_mask().")

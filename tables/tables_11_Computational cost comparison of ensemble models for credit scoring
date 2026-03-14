@@ -1,0 +1,17 @@
+\begin{tabular}{llrrrrrrr}
+		\toprule
+		\multicolumn{2}{c}{\textbf{Phase / Dataset}} & \textbf{DT} & \textbf{LDA} & \textbf{LR} & \textbf{RF} & \textbf{XGB} & \textbf{LGB} & \textbf{AAESS} \\
+		\midrule
+		\multirow{4}{*}{\textbf{Training}}
+		& Shandong & 0.974 & 0.079 & 0.073 & 5.012 & 0.538 & 1.508 & 8.207 \\
+		& Give     & 0.412 & 0.043 & 0.031 & 1.911 & 0.490 & 1.684 & 4.581 \\
+		& BankFear & 1.534 & 0.296 & 0.275 & 11.589 & 3.049 & 2.818 & 19.626 \\
+		& Fannie   & 15.067 & 0.811 & 2.743 & 37.343 & 14.557 & 5.254 & 75.847 \\
+		\midrule
+		\multirow{4}{*}{\textbf{Prediction}}
+		& Shandong & 0.006 & 0.002 & 0.003 & 0.109 & 0.005 & 0.105 & 0.230 \\
+		& Give     & 0.001 & 0.001 & 0.001 & 0.073 & 0.004 & 0.095 & 0.176 \\
+		& BankFear & 0.015 & 0.008 & 0.012 & 0.471 & 0.026 & 0.275 & 0.808 \\
+		& Fannie   & 0.028 & 0.020 & 0.025 & 0.375 & 0.160 & 0.410 & 1.020 \\
+		\bottomrule
+	\end{tabular}

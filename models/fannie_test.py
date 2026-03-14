@@ -30,9 +30,8 @@ from main.feature_selection import FeatureEvaluator, is_pareto_efficient, evalua
 from main.aaess_attention_stacking import AAESSAttentionStacking
 
 
-# =========================================================
 # 0. Config
-# =========================================================
+
 SEED = 42
 random.seed(SEED)
 np.random.seed(SEED)
@@ -54,14 +53,13 @@ FEATURE_METHODS = [
     # "ReliefFE",
 ]
 
-# 固定一组参数，方便审稿人复现
+
 FIXED_PARAMS = {
-    "n_estimators": 500,
-    "max_depth": 4,
-    "learning_rate": 0.1,
+    "n_estimators": 400,500,
+    "max_depth": 4,5,
+    "learning_rate": 0.05,0.1,
 }
 
-# 审稿人快速跑通开关
 FAST_MODE = False
 FAST_MAX_SAMPLES = 50000
 
@@ -117,9 +115,8 @@ def to_serializable(obj):
     return obj
 
 
-# =========================================================
 # 2. Feature selection
-# =========================================================
+
 def run_feature_selection(train_x, train_y, valid_x, valid_y, methods):
     candidate_results = []
 
@@ -200,9 +197,9 @@ def run_feature_selection(train_x, train_y, valid_x, valid_y, methods):
     return best, candidate_results
 
 
-# =========================================================
+
 # 3. Load data
-# =========================================================
+
 print("Loading data...")
 data = pd.read_csv(DATA_FILE, low_memory=True)
 data = data.replace([-np.inf, np.inf, np.nan], 0)
@@ -243,9 +240,9 @@ print(f"Valid shape: {valid_x.shape}")
 print(f"Test shape: {test_x.shape}")
 
 
-# =========================================================
+
 # 4. Feature selection on train/valid only
-# =========================================================
+
 print("\nRunning feature selection...")
 best_fs, fs_all_results = run_feature_selection(
     train_x=train_x,
@@ -264,9 +261,9 @@ filtered_test_x = test_x.iloc[:, selected_indices].values
 filtered_full_train_x = full_train_x.iloc[:, selected_indices].values
 
 
-# =========================================================
+
 # 5. Build fixed AAESS model
-# =========================================================
+
 n_estimators = FIXED_PARAMS["n_estimators"]
 max_depth = FIXED_PARAMS["max_depth"]
 learning_rate = FIXED_PARAMS["learning_rate"]
@@ -274,7 +271,7 @@ learning_rate = FIXED_PARAMS["learning_rate"]
 print("\nUsing fixed parameters:")
 print(FIXED_PARAMS)
 
-# 类不平衡权重
+
 pos_weight = int((train_y == 0).sum() / max(1, (train_y == 1).sum()))
 
 base_models = [
@@ -315,9 +312,9 @@ base_models = [
 ]
 
 
-# =========================================================
+
 # 6. Validation-stage fit
-# =========================================================
+
 print("\nFitting validation-stage AAESS...")
 valid_model = AAESSAttentionStacking(
     base_models=base_models,
@@ -346,9 +343,9 @@ print(f"Recall: {valid_rec:.6f}")
 print(f"F1: {valid_f1:.6f}")
 
 
-# =========================================================
+
 # 7. Final fit on train+valid
-# =========================================================
+
 print("\nFitting final AAESS on full train...")
 final_model = AAESSAttentionStacking(
     base_models=base_models,
@@ -360,9 +357,9 @@ final_model = AAESSAttentionStacking(
 final_model.fit(filtered_full_train_x, full_train_y.values)
 
 
-# =========================================================
+
 # 8. Final test evaluation (only once)
-# =========================================================
+
 y_pred = final_model.predict(filtered_test_x)
 y_proba = final_model.predict_proba(filtered_test_x)[:, 1]
 y_proba = np.clip(y_proba, 1e-7, 1 - 1e-7)
@@ -413,9 +410,8 @@ for i, m in enumerate(base_models):
     print(f"{type(m).__name__}: {contributions[i]:.2%}")
 
 
-# =========================================================
 # 9. Save outputs
-# =========================================================
+
 result = {
     "fixed_params": FIXED_PARAMS,
 

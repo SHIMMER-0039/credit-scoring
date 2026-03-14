@@ -279,7 +279,7 @@ class AAESSAttentionStacking:
 
         if hasattr(self.meta_model_, "predict_proba"):
             return self.meta_model_.predict_proba(meta_features)
-
+ 
         pred = self.meta_model_.predict(meta_features)
         return np.column_stack([1 - pred, pred])
 

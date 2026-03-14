@@ -1,8 +1,11 @@
+# main/aaess_attention_stacking.py
+
 from __future__ import annotations
 
 import numpy as np
 from sklearn.base import clone
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import brier_score_loss
 from sklearn.model_selection import StratifiedKFold
 
 from main.outlier_detection import OutlierDetector
@@ -13,19 +16,17 @@ class AAESSAttentionStacking:
     """
     Adaptive Attention-Enhanced Sequential Stacking (AAESS)
 
-    Main logic:
-    1. Detect outliers on training data
+    Workflow:
+    1. Outlier detection on training data
     2. Select robust weighting model:
        - outlier ratio > 5%  -> Huber
        - otherwise           -> BayesianRidge
-    3. Generate OOF predictions from base learners
-    4. Compute sample reliability vectors and model confidence vectors
-    5. Compute attention weights by softmax(gamma_k^T w_i)
-    6. Build meta-features from attention-weighted base predictions
-    7. Train logistic regression meta-classifier
-
-    This implementation is designed to be compatible with the user's current
-    experiment pipeline and aligned with the manuscript description.
+    3. Fit robust weighting module
+    4. Generate OOF predictions from base learners
+    5. Compute learner-specific confidence vectors
+    6. Compute attention weights alpha_{k,i}
+    7. Build attention-weighted meta features
+    8. Train logistic regression meta-classifier
     """
 
     def __init__(
@@ -52,11 +53,11 @@ class AAESSAttentionStacking:
         self.fitted_base_models_ = None
         self.meta_model_ = None
 
+        self.oof_predictions_ = None
         self.model_confidences_ = None
         self.train_attention_weights_ = None
         self.test_attention_weights_ = None
 
-        self.oof_predictions_ = None
         self.train_meta_features_ = None
         self.test_meta_features_ = None
 
@@ -76,9 +77,9 @@ class AAESSAttentionStacking:
     def _ensure_numpy(self, x, y=None):
         x_np = x.values if hasattr(x, "values") else np.asarray(x)
         if y is None:
-            return x_np
+            return x_np.astype(float)
         y_np = y.values if hasattr(y, "values") else np.asarray(y)
-        return x_np, y_np
+        return x_np.astype(float), y_np.astype(float)
 
     def _build_default_outlier_detector(self):
         return OutlierDetector(
@@ -108,17 +109,12 @@ class AAESSAttentionStacking:
         """
         reliability_vectors: (n_samples, n_features)
         model_confidences:   (n_models, n_features)
-
-        returns:
-            attention_weights: (n_samples, n_models)
+        returns:             (n_samples, n_models)
         """
         scores = reliability_vectors @ model_confidences.T
         return self._softmax(scores, axis=1)
 
     def _generate_oof_predictions(self, X: np.ndarray, y: np.ndarray):
-        """
-        Generate out-of-fold predictions for base learners.
-        """
         n_samples = X.shape[0]
         n_models = len(self.base_models)
         oof_predictions = np.zeros((n_samples, n_models), dtype=float)
@@ -145,17 +141,44 @@ class AAESSAttentionStacking:
 
                 oof_predictions[valid_idx, model_idx] = pred
 
-            # refit on full training data for later inference
             final_model = clone(base_model)
             final_model.fit(X, y)
             fitted_base_models.append(final_model)
 
         return oof_predictions, fitted_base_models
 
+    def _build_model_confidences(
+        self,
+        y_true: np.ndarray,
+        oof_predictions: np.ndarray,
+        base_feature_confidence: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Build learner-specific confidence vectors.
+
+        Practical implementation:
+        - use robust feature-wise confidence as backbone
+        - scale it by each learner's OOF quality
+        """
+        n_models = oof_predictions.shape[1]
+        model_confidences = []
+
+        for j in range(n_models):
+            pred_j = np.clip(oof_predictions[:, j], 1e-12, 1 - 1e-12)
+
+            # Lower Brier score -> higher multiplier
+            bs = brier_score_loss(y_true, pred_j)
+            multiplier = 1.0 / max(bs, 1e-12)
+
+            gamma_j = base_feature_confidence * multiplier
+            model_confidences.append(gamma_j)
+
+        return np.vstack(model_confidences)
+
     def fit(self, X, y):
         X, y = self._ensure_numpy(X, y)
 
-        self._log("Step 1: outlier detection")
+        self._log("Step 1: Outlier detection")
         if self.outlier_detector is None:
             self.outlier_detector = self._build_default_outlier_detector()
 
@@ -166,7 +189,7 @@ class AAESSAttentionStacking:
         self._log(f"Outlier ratio: {self.outlier_ratio_:.4%}")
         self._log(f"Selected weighting model: {self.selected_weighting_model_}")
 
-        self._log("Step 2: robust weighting")
+        self._log("Step 2: Robust weighting")
         if self.robust_weighting_module is None:
             self.robust_weighting_module = self._build_default_weighting_module(
                 self.selected_weighting_model_
@@ -174,54 +197,41 @@ class AAESSAttentionStacking:
 
         self.robust_weighting_module.fit(X, y)
         reliability_vectors = self.robust_weighting_module.sample_reliability_vector_
-        feature_confidence = self.robust_weighting_module.get_model_confidence()
+        base_feature_confidence = self.robust_weighting_module.get_model_confidence()
 
-        self._log("Step 3: generate OOF predictions")
+        self._log("Step 3: OOF predictions")
         oof_predictions, fitted_base_models = self._generate_oof_predictions(X, y)
 
-        # For practical implementation, each base learner uses the same confidence backbone.
-        # To slightly distinguish learners, we scale confidence by training-set OOF quality.
-        n_models = len(self.base_models)
-        model_confidences = []
+        self._log("Step 4: Learner-specific confidence vectors")
+        model_confidences = self._build_model_confidences(
+            y_true=y,
+            oof_predictions=oof_predictions,
+            base_feature_confidence=base_feature_confidence,
+        )
 
-        self._log("Step 4: compute model-specific confidence vectors")
-        for j in range(n_models):
-            pred_j = np.clip(oof_predictions[:, j], 1e-12, 1 - 1e-12)
-
-            # a simple performance-driven scalar:
-            # better learner -> larger multiplier
-            # use inverse brier-like error
-            err = np.mean((pred_j - y) ** 2)
-            multiplier = 1.0 / max(err, 1e-12)
-
-            gamma_j = feature_confidence * multiplier
-            model_confidences.append(gamma_j)
-
-        model_confidences = np.vstack(model_confidences)
-
-        self._log("Step 5: compute attention weights")
+        self._log("Step 5: Attention weights")
         attention_weights = self._compute_attention_weights(
             reliability_vectors=reliability_vectors,
-            model_confidences=model_confidences
+            model_confidences=model_confidences,
         )
 
         weighted_oof_predictions = attention_weights * oof_predictions
 
-        self._log("Step 6: build meta-features")
+        self._log("Step 6: Meta-features")
         if self.use_original_features:
             meta_features = np.hstack([X, weighted_oof_predictions])
         else:
             meta_features = weighted_oof_predictions
 
-        self._log("Step 7: train meta-classifier")
+        self._log("Step 7: Train meta-classifier")
         meta_model = clone(self.meta_model)
         meta_model.fit(meta_features, y)
 
         self.fitted_base_models_ = fitted_base_models
         self.meta_model_ = meta_model
+        self.oof_predictions_ = oof_predictions
         self.model_confidences_ = model_confidences
         self.train_attention_weights_ = attention_weights
-        self.oof_predictions_ = oof_predictions
         self.train_meta_features_ = meta_features
 
         return self
@@ -248,13 +258,13 @@ class AAESSAttentionStacking:
             raise RuntimeError("Call fit() before predict_proba().")
 
         X = self._ensure_numpy(X)
-
         base_predictions = self._predict_base_outputs(X)
+
         reliability_vectors = self.robust_weighting_module.transform_reliability_vector(X)
 
         attention_weights = self._compute_attention_weights(
             reliability_vectors=reliability_vectors,
-            model_confidences=self.model_confidences_
+            model_confidences=self.model_confidences_,
         )
 
         weighted_predictions = attention_weights * base_predictions
@@ -290,8 +300,7 @@ class AAESSAttentionStacking:
 
     def get_model_contributions(self):
         """
-        Approximate contribution summary:
-        average attention weight per learner on the training set.
+        Approximate learner contribution by average attention weight.
         """
         if self.train_attention_weights_ is None:
             raise RuntimeError("Call fit() first.")
@@ -309,4 +318,6 @@ class AAESSAttentionStacking:
             "random_state": self.random_state,
             "base_models": [type(m).__name__ for m in self.base_models],
             "meta_model": type(self.meta_model).__name__,
+            "selected_weighting_model": self.selected_weighting_model_,
+            "outlier_ratio": self.outlier_ratio_,
         }

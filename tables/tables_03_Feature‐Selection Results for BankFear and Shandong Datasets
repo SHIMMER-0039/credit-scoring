@@ -33,7 +33,7 @@
 			& F10 & X &   & X &   &   & X \\
 			\bottomrule
 		\end{tabular}
-		\begin{tablenotes}[flushleft]
+		\begin{tablenotes}[flushleft] 
 			\footnotesize
 			\item[\textsuperscript{a}] ``X'' indicates the feature is selected by the corresponding method; FIN is the final retained subset.
 			\item[\textsuperscript{b}] $F_i$ denotes the $i$-th original predictor variable.

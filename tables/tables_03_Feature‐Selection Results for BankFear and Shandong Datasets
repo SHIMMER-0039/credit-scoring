@@ -1,0 +1,40 @@
+\textbf{Dataset} & \textbf{Feature} & \textbf{FS1} & \textbf{FS2} & \textbf{FS3} & \textbf{FS4} & \textbf{FS5} & \textbf{FIN} \\
+			\midrule
+			\multirow{18}{*}{\textit{BankFear}} 
+			& F1  & X &   & X &   & X & X \\
+			& F2  &   & X &   & X &   &   \\
+			& F3  &   &   & X &   & X &   \\
+			& F4  &   &   &   &   &   & X \\
+			& F5  & X &   &   &   &   &   \\
+			& F6  &   &   &   & X &   &   \\
+			& F7  & X &   &   & X &   & X \\
+			& F8  &   & X &   &   & X &   \\
+			& F9  &   &   & X & X &   & X \\
+			& F10 &   &   &   & X &   & X \\
+			& F11 &   & X & X & X & X &   \\
+			& F12 & X &   & X &   &   & X \\
+			& F13 &   & X &   & X &   &   \\
+			& F14 & X &   &   & X & X & X \\
+			& F15 &   &   &   &   &   &   \\
+			& F16 &   &   &   &   &   &   \\
+			& F17 &   &   &   &   &   &   \\
+			& F18 &   &   &   &   &   &   \\
+			\midrule
+			\multirow{10}{*}{\textit{Shandong}} 
+			& F1  & X &   & X & X & X & X \\
+			& F2  &   & X & X & X & X & X \\
+			& F3  & X &   &   &   & X & X \\
+			& F4  & X &   & X & X & X & X \\
+			& F5  & X & X &   &   & X & X \\
+			& F6  &   & X & X &   &   & X \\
+			& F7  &   &   & X & X & X & X \\
+			& F8  & X & X &   & X &   & X \\
+			& F9  &   & X & X &   & X & X \\
+			& F10 & X &   & X &   &   & X \\
+			\bottomrule
+		\end{tabular}
+		\begin{tablenotes}[flushleft]
+			\footnotesize
+			\item[\textsuperscript{a}] ``X'' indicates the feature is selected by the corresponding method; FIN is the final retained subset.
+			\item[\textsuperscript{b}] $F_i$ denotes the $i$-th original predictor variable.
+			\item[\textsuperscript{c}] FS1--FS5 denote the five feature-selection algorithms.

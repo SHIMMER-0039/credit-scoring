@@ -10,4 +10,4 @@
 		Type-I error~($\downarrow$)  & 0.0103   & \textbf{0.0061} & 0.0067   & \textbf{0.0029} & 0.0083   & \textbf{0.0007} & \textbf{0.0183} & 0.0291   \\
 		Type-II error~($\downarrow$) & \textbf{0.7581} & 0.7857   & 0.5655   & \textbf{0.4292} & \textbf{0.9250} & 0.9371   & 0.6679   & \textbf{0.2304} \\
 		\bottomrule
-	\end{tabular}
+	\end{tabular} 

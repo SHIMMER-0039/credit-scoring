@@ -19,4 +19,4 @@
 		LightGBM & 0.92117 & 0.94668 & 0.06326 & 0.81825 & 0.02508 & 0.25170 \\
 		AAESS    & \textbf{0.92319} & \textbf{0.94725} & \textbf{0.06198} & \textbf{0.82617} & 0.02905 & 0.23039 \\
 		\bottomrule
-	\end{tabular}
+	\end{tabular} 

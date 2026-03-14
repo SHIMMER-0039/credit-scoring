@@ -1,4 +1,4 @@
-\begin{tabular}{lccccc}
+\begin{tabular}{lccccc} 
 		\toprule
 		\textbf{Model} & \textbf{ACC} $\uparrow$ & \textbf{AUC} $\uparrow$ & \textbf{BS} $\downarrow$ & \textbf{F1-score} $\uparrow$ & \textbf{Type-II} $\downarrow$ \\
 		\midrule

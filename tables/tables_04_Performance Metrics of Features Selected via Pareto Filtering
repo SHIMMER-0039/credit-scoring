@@ -47,4 +47,4 @@
 		& LightGBM& \textbf{0.93920} & \textbf{0.87286} & \textbf{0.20325} & \textbf{0.60975} \\
 		\bottomrule
 	\end{tabular}
-\end{table}
+\end{table} 

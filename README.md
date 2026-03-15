@@ -46,6 +46,7 @@ feature_ablation.py: script used to run the feature ablation experiments
 
 HO_ablation.py: script used to compare homogeneous and heterogeneous stacking ensembles
 
+noatt_give_test.py:Model without stacking
 
 ## Instructions & computational requirements.
 
@@ -58,24 +59,18 @@ pip install -r requirements.txt
 
 The experiments were conducted using Python 3.8.
 
+GPU: NVIDIA GeForce RTX
+3090 GPU
+
+
+Multi-core CPU: recommended Core i5-13400F
+
+
 The main Python packages used in the experiments include:
 
-numpy
-
-pandas
-
-scikit-learn
-
-xgboost
-
-lightgbm
-
-scipy
-
-matplotlib
+numpy, pandas, scikit-learn, xgboost, lightgbm, scipy, matplotlib
 
 A comprehensive list of dependencies can be found in the file:
-
 requirements.txt
 
 
@@ -133,6 +128,9 @@ python models/HO_ablation.py
 
 
 This script compares homogeneous stacking, heterogeneous stacking, and the proposed AAESS model.
+
+
+
 
 ### Additional note on experimental results
 

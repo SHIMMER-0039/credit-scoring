@@ -4,6 +4,8 @@ Shanshan Jiang, Lingyi Meng, Min Xia
 
 ## Overview & contents
 
+The plots/ directory contains the source files and scripts for all visualizations reported in the manuscript to ensure full reproducibility.
+
 The code in this replication material reproduces the experimental results reported in the paper "Adaptive Voting Stacking with Attention Mechanism for the Enhanced Credit Scoring".
 
 The repository implements the proposed Adaptive Attention-Enhanced Sequential Stacking (AAESS) framework together with the experiments used in the paper, including:

@@ -20,9 +20,9 @@ from main.outlier_detection import OutlierDetector
 from main.robust_weighting import RobustWeightingModule
 
 
-# =========================================================
+
 # 0. Config
-# =========================================================
+
 SEED = 42
 random.seed(SEED)
 np.random.seed(SEED)
@@ -56,9 +56,8 @@ FAST_MAX_SAMPLES = 50000
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 
-# =========================================================
 # 1. Helpers
-# =========================================================
+
 def h_mean(precision: float, recall: float) -> float:
     if precision + recall == 0:
         return 0.0
@@ -105,9 +104,8 @@ def to_serializable(obj):
     return obj
 
 
-# =========================================================
 # 2. Feature Selection
-# =========================================================
+
 def run_feature_selection(train_x, train_y, valid_x, valid_y, methods):
     candidate_results = []
     for method in methods:
@@ -173,9 +171,8 @@ def run_feature_selection(train_x, train_y, valid_x, valid_y, methods):
     return best, candidate_results
 
 
-# =========================================================
 # 3. Data loading / FS / Outlier Detection
-# =========================================================
+
 print(f"Loading data for {DATASET_NAME}...")
 data = pd.read_csv(DATA_FILE, low_memory=True)
 data = data.replace([-np.inf, np.inf, np.nan], 0)
@@ -239,9 +236,8 @@ else:
     full_train_y_clean = full_train_y.reset_index(drop=True)
 
 
-# =========================================================
 # 4. Robust Weighting
-# =========================================================
+
 robust_module = None
 train_sample_weights = None
 
@@ -268,15 +264,15 @@ else:
     print("\nRobust weighting disabled.")
 
 
-# =========================================================
+
 # 5. Grid Search: LightGBM Hyperparameters
-# =========================================================
+
 PARAM_GRID = {
     "n_estimators": [100,200,300,400,500,600,700,800,900,1000,1100],
     "max_depth": [1,2,3,4,5,6,7,8,9],
     "learning_rate": [0.01,0.02,0.1,0.2]
 }
-
+ 
 all_results = []
 best_result = None
 best_score = -np.inf
@@ -358,9 +354,8 @@ for n_estimators in PARAM_GRID["n_estimators"]:
                 best_result = res_entry
 
 
-# =========================================================
 # 6. Final Summary & Save
-# =========================================================
+
 print("\n" + "=" * 80)
 print(f"{'BEST MODEL SUMMARY':^80}")
 print("=" * 80)

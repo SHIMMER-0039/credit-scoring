@@ -272,9 +272,9 @@ else:
 # 5. Grid Search: LightGBM Hyperparameters
 # =========================================================
 PARAM_GRID = {
-    "n_estimators": [1000],
-    "max_depth": [6],
-    "learning_rate": [0.005]
+    "n_estimators": [100,200,300,400,500,600,700,800,900,1000,1100],
+    "max_depth": [1,2,3,4,5,6,7,8,9],
+    "learning_rate": [0.01,0.02,0.1,0.2]
 }
 
 all_results = []
@@ -388,4 +388,4 @@ save_file = os.path.join(SAVE_DIR, f"LGBM_Full_Grid_Robust_{DATASET_NAME}.json")
 with open(save_file, 'w', encoding='utf-8') as f:
     json.dump(to_serializable(output_final), f, indent=4, ensure_ascii=False)
 
-print(f"\n✅ 完整实验数据已保存至: {save_file}")
+

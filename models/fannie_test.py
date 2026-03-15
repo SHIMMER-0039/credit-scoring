@@ -36,11 +36,11 @@ SEED = 42
 random.seed(SEED)
 np.random.seed(SEED)
 
-# ====== 改成你自己的本地路径 ======
+
 DATA_FILE = r'D:\study\credit_scoring_datasets\FannieMae\2008q1.csv'
 SHUFFLE_FILE = r'D:\study\Credit(1)\Credit\shuffle_index\fannie\shuffle_index.pickle'
 SAVE_DIR = r'D:\study\second\outcome\fannie'
-# =================================
+
 
 TARGET_COL = 'DEFAULT'
 DROP_COLS = ['DEFAULT', 'LOAN IDENTIFIER']
@@ -48,16 +48,16 @@ DROP_COLS = ['DEFAULT', 'LOAN IDENTIFIER']
 FEATURE_METHODS = [
     "ClassifierFE",
     "CorrelationFE",
-    # "GainRFE",
-    # "InfoGainFE",
-    # "ReliefFE",
+    "GainRFE",
+    "InfoGainFE",
+    "ReliefFE",
 ]
 
 
 FIXED_PARAMS = {
-    "n_estimators": 400,500,
-    "max_depth": 4,5,
-    "learning_rate": 0.05,0.1,
+    "n_estimators": 1000,
+    "max_depth": 4,
+    "learning_rate": 0.01,
 }
 
 FAST_MODE = False
@@ -66,9 +66,7 @@ FAST_MAX_SAMPLES = 50000
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 
-# =========================================================
-# 1. Helpers
-# =========================================================
+
 def h_mean(precision: float, recall: float) -> float:
     if precision + recall == 0:
         return 0.0
@@ -296,19 +294,19 @@ base_models = [
         min_split_gain=0.1,
         class_weight='balanced'
     ),
-    # RandomForestClassifier(
-    #     n_estimators=n_estimators,
-    #     min_samples_split=5,
-    #     max_features='sqrt',
-    #     n_jobs=-1,
-    #     random_state=SEED,
-    #     class_weight='balanced'
-    # ),
-    # AdaBoostClassifier(
-    #     n_estimators=min(n_estimators, 200),
-    #     learning_rate=learning_rate,
-    #     random_state=SEED
-    # )
+    RandomForestClassifier(
+        n_estimators=n_estimators,
+        min_samples_split=5,
+        max_features='sqrt',
+        n_jobs=-1,
+        random_state=SEED,
+        class_weight='balanced'
+    ),
+    AdaBoostClassifier(
+        n_estimators=min(n_estimators, 200),
+        learning_rate=learning_rate,
+        random_state=SEED
+    )
 ]
 
 

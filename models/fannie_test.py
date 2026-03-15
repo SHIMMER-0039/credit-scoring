@@ -4,24 +4,12 @@ import os
 import json
 import pickle
 import random
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from scipy.stats import ks_2samp
 from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier
-from sklearn.metrics import (
-    accuracy_score,
-    roc_auc_score,
-    log_loss,
-    precision_score,
-    recall_score,
-    f1_score,
-    brier_score_loss,
-    average_precision_score,
-    roc_curve,
-)
+from sklearn.metrics import accuracy_score, roc_auc_score
 
 import xgboost as xgb
 import lightgbm as lgb
@@ -30,8 +18,9 @@ from main.feature_selection import FeatureEvaluator, is_pareto_efficient, evalua
 from main.aaess_attention_stacking import AAESSAttentionStacking
 
 
+# =========================================================
 # 0. Config
-
+# =========================================================
 SEED = 42
 random.seed(SEED)
 np.random.seed(SEED)
@@ -40,7 +29,7 @@ np.random.seed(SEED)
 DATA_FILE = r'D:\study\credit_scoring_datasets\FannieMae\2008q1.csv'
 SHUFFLE_FILE = r'D:\study\Credit(1)\Credit\shuffle_index\fannie\shuffle_index.pickle'
 SAVE_DIR = r'D:\study\second\outcome\fannie'
-
+# =================================
 
 TARGET_COL = 'DEFAULT'
 DROP_COLS = ['DEFAULT', 'LOAN IDENTIFIER']
@@ -53,11 +42,10 @@ FEATURE_METHODS = [
     "ReliefFE",
 ]
 
-
-FIXED_PARAMS = {
-    "n_estimators": 1000,
-    "max_depth": 4,
-    "learning_rate": 0.01,
+PARAM_GRID = {
+    "n_estimators": [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100],
+    "max_depth": [1, 2, 3, 4, 5, 6, 7, 8, 9],
+    "learning_rate": [0.01, 0.02, 0.1, 0.2]
 }
 
 FAST_MODE = False
@@ -66,38 +54,7 @@ FAST_MAX_SAMPLES = 50000
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 
-
-def h_mean(precision: float, recall: float) -> float:
-    if precision + recall == 0:
-        return 0.0
-    return 2 * (precision * recall) / (precision + recall)
-
-
-def type1error(y_proba, y_true, threshold=0.5):
-    y_pred = (y_proba >= threshold).astype(int)
-    fp = ((y_pred == 1) & (y_true == 0)).sum()
-    denom = (y_true == 0).sum()
-    return fp / denom if denom > 0 else 0.0
-
-
-def type2error(y_proba, y_true, threshold=0.5):
-    y_pred = (y_proba >= threshold).astype(int)
-    fn = ((y_pred == 0) & (y_true == 1)).sum()
-    denom = (y_true == 1).sum()
-    return fn / denom if denom > 0 else 0.0
-
-
-def safe_precision(y_true, y_pred):
-    return precision_score(y_true, y_pred, zero_division=0)
-
-
-def safe_recall(y_true, y_pred):
-    return recall_score(y_true, y_pred, zero_division=0)
-
-
-def safe_f1(y_true, y_pred):
-    return f1_score(y_true, y_pred, zero_division=0)
-
+# 1. Helpers
 
 def to_serializable(obj):
     if isinstance(obj, np.ndarray):
@@ -195,7 +152,6 @@ def run_feature_selection(train_x, train_y, valid_x, valid_y, methods):
     return best, candidate_results
 
 
-
 # 3. Load data
 
 print("Loading data...")
@@ -260,201 +216,184 @@ filtered_full_train_x = full_train_x.iloc[:, selected_indices].values
 
 
 
-# 5. Build fixed AAESS model
+# 5. Grid search AAESS
 
-n_estimators = FIXED_PARAMS["n_estimators"]
-max_depth = FIXED_PARAMS["max_depth"]
-learning_rate = FIXED_PARAMS["learning_rate"]
+print("\nUsing parameter grid:")
+print(PARAM_GRID)
 
-print("\nUsing fixed parameters:")
-print(FIXED_PARAMS)
+pos_weight_train = int((train_y == 0).sum() / max(1, (train_y == 1).sum()))
+pos_weight_full = int((full_train_y == 0).sum() / max(1, (full_train_y == 1).sum()))
 
-
-pos_weight = int((train_y == 0).sum() / max(1, (train_y == 1).sum()))
-
-base_models = [
-    xgb.XGBClassifier(
-        n_estimators=n_estimators,
-        max_depth=max_depth,
-        learning_rate=learning_rate,
-        n_jobs=-1,
-        use_label_encoder=False,
-        eval_metric='logloss',
-        random_state=SEED,
-        tree_method='hist',
-        scale_pos_weight=pos_weight
-    ),
-    lgb.LGBMClassifier(
-        n_estimators=n_estimators,
-        max_depth=max_depth,
-        learning_rate=learning_rate,
-        n_jobs=-1,
-        random_state=SEED,
-        min_data_in_leaf=20,
-        min_split_gain=0.1,
-        class_weight='balanced'
-    ),
-    RandomForestClassifier(
-        n_estimators=n_estimators,
-        min_samples_split=5,
-        max_features='sqrt',
-        n_jobs=-1,
-        random_state=SEED,
-        class_weight='balanced'
-    ),
-    AdaBoostClassifier(
-        n_estimators=min(n_estimators, 200),
-        learning_rate=learning_rate,
-        random_state=SEED
-    )
-]
+all_results = []
+best_result = None
+best_score = -np.inf
 
 
-
-# 6. Validation-stage fit
-
-print("\nFitting validation-stage AAESS...")
-valid_model = AAESSAttentionStacking(
-    base_models=base_models,
-    n_folds=5,
-    random_state=SEED,
-    use_original_features=False,
-    verbose=True
-)
-valid_model.fit(filtered_train_x, train_y.values)
-
-valid_pred = valid_model.predict(filtered_valid_x)
-valid_proba = valid_model.predict_proba(filtered_valid_x)[:, 1]
-valid_proba = np.clip(valid_proba, 0, 1)
-
-valid_acc = accuracy_score(valid_y, valid_pred)
-valid_auc = roc_auc_score(valid_y, valid_proba)
-valid_prec = safe_precision(valid_y, valid_pred)
-valid_rec = safe_recall(valid_y, valid_pred)
-valid_f1 = safe_f1(valid_y, valid_pred)
-
-print("\nValidation results:")
-print(f"ACC: {valid_acc:.6f}")
-print(f"AUC: {valid_auc:.6f}")
-print(f"Precision: {valid_prec:.6f}")
-print(f"Recall: {valid_rec:.6f}")
-print(f"F1: {valid_f1:.6f}")
-
-
-
-# 7. Final fit on train+valid
-
-print("\nFitting final AAESS on full train...")
-final_model = AAESSAttentionStacking(
-    base_models=base_models,
-    n_folds=5,
-    random_state=SEED,
-    use_original_features=False,
-    verbose=True
-)
-final_model.fit(filtered_full_train_x, full_train_y.values)
+def build_base_models(n_estimators, max_depth, learning_rate, pos_weight):
+    return [
+        xgb.XGBClassifier(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            learning_rate=learning_rate,
+            n_jobs=-1,
+            use_label_encoder=False,
+            eval_metric='logloss',
+            random_state=SEED,
+            tree_method='hist',
+            scale_pos_weight=pos_weight
+        ),
+        lgb.LGBMClassifier(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            learning_rate=learning_rate,
+            n_jobs=-1,
+            random_state=SEED,
+            min_data_in_leaf=20,
+            min_split_gain=0.1,
+            class_weight='balanced'
+        ),
+        RandomForestClassifier(
+            n_estimators=n_estimators,
+            min_samples_split=5,
+            max_features='sqrt',
+            n_jobs=-1,
+            random_state=SEED,
+            class_weight='balanced'
+        ),
+        AdaBoostClassifier(
+            n_estimators=min(n_estimators, 200),
+            learning_rate=learning_rate,
+            random_state=SEED
+        )
+    ]
 
 
+for n_estimators in PARAM_GRID["n_estimators"]:
+    for max_depth in PARAM_GRID["max_depth"]:
+        for learning_rate in PARAM_GRID["learning_rate"]:
 
-# 8. Final test evaluation (only once)
+            print("\n" + "=" * 80)
+            print(f"Testing params: n_estimators={n_estimators}, max_depth={max_depth}, learning_rate={learning_rate}")
+            print("=" * 80)
 
-y_pred = final_model.predict(filtered_test_x)
-y_proba = final_model.predict_proba(filtered_test_x)[:, 1]
-y_proba = np.clip(y_proba, 1e-7, 1 - 1e-7)
+            # -------------------------
+            # Validation-stage fit
+            # -------------------------
+            valid_model = AAESSAttentionStacking(
+                base_models=build_base_models(
+                    n_estimators=n_estimators,
+                    max_depth=max_depth,
+                    learning_rate=learning_rate,
+                    pos_weight=pos_weight_train
+                ),
+                n_folds=5,
+                random_state=SEED,
+                use_original_features=False,
+                verbose=True
+            )
+            valid_model.fit(filtered_train_x, train_y.values)
 
-auc = roc_auc_score(test_y, y_proba)
-acc = accuracy_score(test_y, y_pred)
-prec = safe_precision(test_y, y_pred)
-rec = safe_recall(test_y, y_pred)
-f1 = safe_f1(test_y, y_pred)
+            valid_pred = valid_model.predict(filtered_valid_x)
+            valid_proba = valid_model.predict_proba(filtered_valid_x)[:, 1]
+            valid_proba = np.clip(valid_proba, 1e-7, 1 - 1e-7)
 
-ll = log_loss(test_y, y_proba)
-bs = brier_score_loss(test_y, y_proba)
-ap = average_precision_score(test_y, y_proba)
+            valid_acc = accuracy_score(valid_y, valid_pred)
+            valid_auc = roc_auc_score(valid_y, valid_proba)
 
-ks = ks_2samp(
-    y_proba[test_y == 1],
-    y_proba[test_y != 1]
-).statistic
+            print("\nValidation results:")
+            print(f"AUC: {valid_auc:.6f}")
+            print(f"ACC: {valid_acc:.6f}")
 
-fprs, tprs, thresholds = roc_curve(test_y, y_proba)
-true_positive_rate = tprs
-true_negative_rate = 1 - fprs
-gmean = np.sqrt(true_positive_rate * true_negative_rate)
+            # -------------------------
+            # Final fit on train+valid
+            # -------------------------
+            final_model = AAESSAttentionStacking(
+                base_models=build_base_models(
+                    n_estimators=n_estimators,
+                    max_depth=max_depth,
+                    learning_rate=learning_rate,
+                    pos_weight=pos_weight_full
+                ),
+                n_folds=5,
+                random_state=SEED,
+                use_original_features=False,
+                verbose=True
+            )
+            final_model.fit(filtered_full_train_x, full_train_y.values)
 
-hm = h_mean(prec, rec)
-e1 = type1error(y_proba, test_y, threshold=0.5)
-e2 = type2error(y_proba, test_y, threshold=0.5)
+            # -------------------------
+            # Final test evaluation
+            # -------------------------
+            y_pred = final_model.predict(filtered_test_x)
+            y_proba = final_model.predict_proba(filtered_test_x)[:, 1]
+            y_proba = np.clip(y_proba, 1e-7, 1 - 1e-7)
 
-attention_summary = final_model.get_attention_summary()
-contributions = final_model.get_model_contributions()
+            auc = roc_auc_score(test_y, y_proba)
+            acc = accuracy_score(test_y, y_pred)
 
-print("\nFinal test results:")
-print(f"AUC: {auc:.6f}")
-print(f"ACC: {acc:.6f}")
-print(f"Precision: {prec:.6f}")
-print(f"Recall: {rec:.6f}")
-print(f"F1: {f1:.6f}")
-print(f"KS: {ks:.6f}")
-print(f"LogLoss: {ll:.6f}")
-print(f"Brier Score: {bs:.6f}")
-print(f"AP: {ap:.6f}")
-print(f"H-mean: {hm:.6f}")
-print(f"Type I Error: {e1:.6f}")
-print(f"Type II Error: {e2:.6f}")
+            print("\nFinal test results:")
+            print(f"AUC: {auc:.6f}")
+            print(f"ACC: {acc:.6f}")
 
-print("\nModel contributions:")
-for i, m in enumerate(base_models):
-    print(f"{type(m).__name__}: {contributions[i]:.2%}")
+            attention_summary = final_model.get_attention_summary()
+            contributions = final_model.get_model_contributions()
+
+            result = {
+                "params": {
+                    "n_estimators": n_estimators,
+                    "max_depth": max_depth,
+                    "learning_rate": learning_rate,
+                },
+                "validation_metrics": {
+                    "auc": valid_auc,
+                    "acc": valid_acc,
+                },
+                "test_metrics": {
+                    "auc": auc,
+                    "acc": acc,
+                },
+                "attention_summary": attention_summary,
+                "model_contributions": contributions,
+                "model_params": final_model.get_params(),
+            }
+
+            all_results.append(result)
+
+         
+            if valid_auc > best_score:
+                best_score = valid_auc
+                best_result = result
 
 
-# 9. Save outputs
+# 6. Save outputs
 
-result = {
-    "fixed_params": FIXED_PARAMS,
-
+output = {
+    "param_grid": PARAM_GRID,
     "feature_selection_summary": {
         "best": best_fs,
         "all_results": fs_all_results,
     },
-
     "selected_features": selected_indices,
     "selected_feature_names": selected_names,
-
-    "validation_acc": valid_acc,
-    "validation_auc": valid_auc,
-    "validation_prec": valid_prec,
-    "validation_rec": valid_rec,
-    "validation_f1": valid_f1,
-
-    "auc": auc,
-    "acc": acc,
-    "prec": prec,
-    "rec": rec,
-    "f1": f1,
-    "bs": bs,
-    "logloss": ll,
-    "ks": ks,
-    "ap": ap,
-    "prec_rec": hm,
-    "e1": e1,
-    "e2": e2,
-    "gmean": gmean,
-    "fprs": fprs,
-    "tprs": tprs,
-
-    "attention_summary": attention_summary,
-    "model_contributions": contributions,
-    "model_params": final_model.get_params(),
+    "best_result": best_result,
+    "all_results": all_results,
 }
 
-pickle_path = os.path.join(SAVE_DIR, "AAESS_fannie_fixed_results.pickle")
+pickle_path = os.path.join(SAVE_DIR, "AAESS_fannie_grid_results_auc_acc_only.pickle")
 with open(pickle_path, "wb") as f:
-    pickle.dump(result, f)
+    pickle.dump(output, f)
 
-json_path = os.path.join(SAVE_DIR, "AAESS_fannie_fixed_results.json")
+json_path = os.path.join(SAVE_DIR, "AAESS_fannie_grid_results_auc_acc_only.json")
 with open(json_path, "w", encoding="utf-8") as f:
-    json.dump(to_serializable(result), f, indent=2, ensure_ascii=False)
+    json.dump(to_serializable(output), f, indent=2, ensure_ascii=False)
 
 print(f"\nSaved pickle: {pickle_path}")
 print(f"Saved json:   {json_path}")
+
+if best_result is not None:
+    print("\nBest params found:")
+    print(best_result["params"])
+    print(f"Best validation AUC: {best_result['validation_metrics']['auc']:.6f}")
+    print(f"Best validation ACC: {best_result['validation_metrics']['acc']:.6f}")
+    print(f"Best test AUC: {best_result['test_metrics']['auc']:.6f}")
+    print(f"Best test ACC: {best_result['test_metrics']['acc']:.6f}")

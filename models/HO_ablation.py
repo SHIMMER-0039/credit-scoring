@@ -65,12 +65,11 @@ FEATURE_METHODS = [
 
 USE_FEATURE_SELECTION = True
 
-# 先给一个固定参数，方便直接跑
+# Assume a parameter
 N_ESTIMATORS = 300
 MAX_DEPTH = 3
 LEARNING_RATE = 0.1
 
-# 调试开关
 FAST_MODE = False
 FAST_MAX_SAMPLES = 50000
 

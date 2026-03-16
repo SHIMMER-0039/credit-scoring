@@ -20,9 +20,9 @@ from main.outlier_detection import OutlierDetector
 from main.robust_weighting import RobustWeightingModule
 
 
-
+# =========================================================
 # 0. Config
-
+# =========================================================
 SEED = 42
 random.seed(SEED)
 np.random.seed(SEED)
@@ -41,14 +41,11 @@ FEATURE_METHODS = [
     "GainRFE",
     "InfoGainFE",
     "ReliefFE",
-
 ]
 
 REMOVE_OUTLIERS = True
 
-USE_ROBUST_WEIGHTING = True
-ROBUST_WEIGHTING_MODEL = "Huber"   # "Huber" or "BayesianRidge"
-ROBUST_REPORT_FILE = os.path.join(SAVE_DIR, f"robust_weighting_{DATASET_NAME}.json")
+ROBUST_MODE = "auto"
 
 FAST_MODE = False
 FAST_MAX_SAMPLES = 50000
@@ -56,8 +53,9 @@ FAST_MAX_SAMPLES = 50000
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 
+# =========================================================
 # 1. Helpers
-
+# =========================================================
 def h_mean(precision: float, recall: float) -> float:
     if precision + recall == 0:
         return 0.0
@@ -104,8 +102,9 @@ def to_serializable(obj):
     return obj
 
 
+# =========================================================
 # 2. Feature Selection
-
+# =========================================================
 def run_feature_selection(train_x, train_y, valid_x, valid_y, methods):
     candidate_results = []
     for method in methods:
@@ -171,8 +170,9 @@ def run_feature_selection(train_x, train_y, valid_x, valid_y, methods):
     return best, candidate_results
 
 
+# =========================================================
 # 3. Data loading / FS / Outlier Detection
-
+# =========================================================
 print(f"Loading data for {DATASET_NAME}...")
 data = pd.read_csv(DATA_FILE, low_memory=True)
 data = data.replace([-np.inf, np.inf, np.nan], 0)
@@ -236,15 +236,36 @@ else:
     full_train_y_clean = full_train_y.reset_index(drop=True)
 
 
-# 4. Robust Weighting
-
+# =========================================================
+# 4. Robust Weighting / No Weighting
+# =========================================================
+# =========================================================
+# 4. Robust Weighting / No Weighting
+# =========================================================
 robust_module = None
 train_sample_weights = None
+robust_report_file = None
 
-if USE_ROBUST_WEIGHTING:
-    print("\nRunning Robust Weighting...")
+outlier_ratio = float((outlier_mask == 1).sum()) / len(outlier_mask)
+
+if ROBUST_MODE == "auto":
+    if outlier_ratio > 0.05:
+        selected_robust_mode = "Huber"
+    else:
+        selected_robust_mode = "BayesianRidge"
+
+
+print(f"\nOutlier ratio: {outlier_ratio:.4%}")
+print(f"Selected robust mode: {selected_robust_mode}")
+
+if selected_robust_mode in {"Huber", "BayesianRidge"}:
+    robust_report_file = os.path.join(
+        SAVE_DIR, f"robust_weighting_{selected_robust_mode}_{DATASET_NAME}.json"
+    )
+
+    print(f"\nRunning Robust Weighting with {selected_robust_mode}...")
     robust_module = RobustWeightingModule(
-        weighting_model=ROBUST_WEIGHTING_MODEL,
+        weighting_model=selected_robust_mode,
         huber_epsilon=5.0,
         normalize_weights=True,
         standardize_x=False,
@@ -258,21 +279,27 @@ if USE_ROBUST_WEIGHTING:
     print(f"  max : {train_sample_weights.max():.6f}")
     print(f"  mean: {train_sample_weights.mean():.6f}")
 
-    robust_module.save_report(ROBUST_REPORT_FILE)
-    print(f"Robust weighting report saved to: {ROBUST_REPORT_FILE}")
+    robust_module.save_report(robust_report_file)
+    print(f"Robust weighting report saved to: {robust_report_file}")
+
+elif selected_robust_mode == "None":
+    print("\nRobust weighting disabled. Training without sample weights.")
+    train_sample_weights = None
+
 else:
-    print("\nRobust weighting disabled.")
+    raise ValueError("ROBUST_MODE must be one of {'auto', 'Huber', 'BayesianRidge', 'None'}")
 
 
 
+# =========================================================
 # 5. Grid Search: LightGBM Hyperparameters
-
+# =========================================================
 PARAM_GRID = {
     "n_estimators": [100,200,300,400,500,600,700,800,900,1000,1100],
     "max_depth": [1,2,3,4,5,6,7,8,9],
     "learning_rate": [0.01,0.02,0.1,0.2]
 }
- 
+
 all_results = []
 best_result = None
 best_score = -np.inf
@@ -295,7 +322,7 @@ for n_estimators in PARAM_GRID["n_estimators"]:
 
             model = lgb.LGBMClassifier(**model_params)
 
-            if USE_ROBUST_WEIGHTING and train_sample_weights is not None:
+            if train_sample_weights is not None:
                 model.fit(
                     filtered_full_train_x_clean,
                     full_train_y_clean,
@@ -321,9 +348,14 @@ for n_estimators in PARAM_GRID["n_estimators"]:
 
             res_entry = {
                 "params": model_params,
+                "outlier_detection": {
+                    "enabled": bool(REMOVE_OUTLIERS),
+                    "n_removed": int((outlier_mask == 1).sum()) if REMOVE_OUTLIERS else 0,
+                    "n_remaining": int(len(full_train_y_clean)),
+                },
                 "robust_weighting": {
-                    "enabled": bool(USE_ROBUST_WEIGHTING),
-                    "model": ROBUST_WEIGHTING_MODEL if USE_ROBUST_WEIGHTING else None,
+                    "enabled": ROBUST_MODE in {"Huber", "BayesianRidge"},
+                    "mode": ROBUST_MODE,
                     "sample_weight_min": float(train_sample_weights.min()) if train_sample_weights is not None else None,
                     "sample_weight_max": float(train_sample_weights.max()) if train_sample_weights is not None else None,
                     "sample_weight_mean": float(train_sample_weights.mean()) if train_sample_weights is not None else None,
@@ -345,7 +377,7 @@ for n_estimators in PARAM_GRID["n_estimators"]:
             all_results.append(res_entry)
 
             print(
-                f"Testing >> n_est: {n_estimators:3} | depth: {max_depth:1} | lr: {learning_rate:.2f} "
+                f"Testing >> n_est: {n_estimators:4} | depth: {max_depth:1} | lr: {learning_rate:.2f} "
                 f"==> AUC: {auc:.4f} | KS: {ks:.4f} | F1: {f1:.4f}"
             )
 
@@ -354,14 +386,16 @@ for n_estimators in PARAM_GRID["n_estimators"]:
                 best_result = res_entry
 
 
+# =========================================================
 # 6. Final Summary & Save
-
+# =========================================================
 print("\n" + "=" * 80)
 print(f"{'BEST MODEL SUMMARY':^80}")
 print("=" * 80)
 bm = best_result["metrics"]
 bp = best_result["params"]
 
+print(f"Robust mode: {ROBUST_MODE}")
 print(f"Optimal Params: n_est={bp['n_estimators']}, depth={bp['max_depth']}, lr={bp['learning_rate']}")
 print("-" * 80)
 print(f"AUC:      {bm['auc']:.6f} | Accuracy: {bm['acc']:.6f} | KS:   {bm['ks']:.6f}")
@@ -375,12 +409,15 @@ output_final = {
     "all_combinations": all_results,
     "feature_selection_summary": best_fs,
     "selected_feature_names": selected_names,
-    "robust_weighting_enabled": USE_ROBUST_WEIGHTING,
-    "robust_weighting_model": ROBUST_WEIGHTING_MODEL if USE_ROBUST_WEIGHTING else None,
+    "remove_outliers": REMOVE_OUTLIERS,
+    "robust_mode_input": ROBUST_MODE,
+    "robust_mode_selected": selected_robust_mode,
+    "outlier_ratio": outlier_ratio,
+    "robust_report_file": robust_report_file,
 }
 
-save_file = os.path.join(SAVE_DIR, f"LGBM_Full_Grid_Robust_{DATASET_NAME}.json")
+save_file = os.path.join(SAVE_DIR, f"LGBM_Full_Grid_{ROBUST_MODE}_{DATASET_NAME}.json")
 with open(save_file, 'w', encoding='utf-8') as f:
     json.dump(to_serializable(output_final), f, indent=4, ensure_ascii=False)
 
-
+print(f"\nSaved result file: {save_file}")

@@ -42,7 +42,7 @@ outlier_detection.py: ensemble outlier detection module used in the AAESS framew
 
 robust_weighting.py: robust sample weighting module
 
-fannie_test.py: main experiment script used to train and evaluate the AAESS model
+main.py: unified entry script for reproducing the main AAESS experiments across multiple datasets.
 
 feature_ablation.py: script used to run the feature ablation experiments
 

@@ -48,7 +48,7 @@ feature_ablation.py: script used to run the feature ablation experiments
 
 HO_ablation.py: script used to compare homogeneous and heterogeneous stacking ensembles
 
-noatt_give_test.py:Model without stacking
+LGB-FS-OD-RW.py: LightGBM baseline without stacking, enhanced with feature selection (FS), ensemble outlier detection (OD), and robust sample weighting (RW).
 
 ## Instructions & computational requirements.
 

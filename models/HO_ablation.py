@@ -309,7 +309,6 @@ class LRWeightingModule:
 
         model = LogisticRegression(
             max_iter=1000,
-            class_weight="balanced",
             random_state=SEED
         )
         model.fit(Xs, y)
@@ -359,7 +358,7 @@ class AAESSAttentionStackingLR:
         self.n_folds = n_folds
         self.meta_model = meta_model if meta_model is not None else LogisticRegression(
             max_iter=1000,
-            class_weight="balanced"
+            class_weight=""
         )
         self.use_original_features = use_original_features
         self.random_state = random_state
@@ -505,7 +504,7 @@ def make_lda():
 def make_lr():
     return make_pipeline(
         StandardScaler(),
-        LogisticRegression(max_iter=1000, class_weight="balanced", random_state=SEED),
+        LogisticRegression(max_iter=1000,  random_state=SEED),
     )
 
 
@@ -516,7 +515,6 @@ def make_rf():
         min_samples_split=5,
         n_jobs=-1,
         random_state=SEED,
-        class_weight="balanced",
     )
 
 
@@ -543,7 +541,6 @@ def make_lgb():
         random_state=SEED,
         min_data_in_leaf=20,
         min_split_gain=0.1,
-        class_weight="balanced",
     )
 
 
@@ -571,7 +568,7 @@ def build_homogeneous_stack(base_estimator, n_clones=3):
         n_folds=5,
         random_state=SEED,
         use_original_features=False,
-        meta_model=LogisticRegression(max_iter=1000, class_weight="balanced"),
+        meta_model=LogisticRegression(max_iter=1000"),
         verbose=False,
     )
 
@@ -606,7 +603,7 @@ def build_table10_model(name, pos_weight):
             n_folds=5,
             random_state=SEED,
             use_original_features=False,
-            meta_model=LogisticRegression(max_iter=1000, class_weight="balanced"),
+            meta_model=LogisticRegression(max_iter=1000),
             verbose=False,
         )
 
@@ -620,7 +617,7 @@ def build_table10_model(name, pos_weight):
             n_folds=5,
             random_state=SEED,
             use_original_features=False,
-            meta_model=LogisticRegression(max_iter=1000, class_weight="balanced"),
+            meta_model=LogisticRegression(max_iter=1000),
             verbose=False,
         )
 
@@ -634,7 +631,7 @@ def build_table10_model(name, pos_weight):
             n_folds=5,
             random_state=SEED,
             use_original_features=False,
-            meta_model=LogisticRegression(max_iter=1000, class_weight="balanced"),
+            meta_model=LogisticRegression(max_iter=1000),
             verbose=False,
         )
 
@@ -649,7 +646,7 @@ def build_table10_model(name, pos_weight):
             n_folds=5,
             random_state=SEED,
             use_original_features=False,
-            meta_model=LogisticRegression(max_iter=1000, class_weight="balanced"),
+            meta_model=LogisticRegression(max_iter=1000),
             verbose=False,
         )
 

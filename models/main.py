@@ -165,7 +165,6 @@ def build_base_models(n_estimators, max_depth, learning_rate, pos_weight):
             random_state=SEED,
             min_data_in_leaf=20,
             min_split_gain=0.1,
-            class_weight='balanced'
         ),
         RandomForestClassifier(
             n_estimators=n_estimators,
@@ -173,7 +172,6 @@ def build_base_models(n_estimators, max_depth, learning_rate, pos_weight):
             max_features='sqrt',
             n_jobs=-1,
             random_state=SEED,
-            class_weight='balanced'
         ),
         AdaBoostClassifier(
             n_estimators=min(n_estimators, 200),

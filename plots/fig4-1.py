@@ -22,7 +22,7 @@ label_mapping = {
     'x19': 'Total Rev. Hi Limit',        # total_rev_hi_lim
     'x5': 'Funded Amount (Inv)',         # funded_amnt_inv
     'x6': 'Sub Grade',                   # sub_grade
-    'x23': 'Loan Term',                  # term (推断)
+    'x23': 'Loan Term',                  # term 
     'x8': 'Annual Income',               # annual_inc
     'x21': 'Recoveries',                 # recoveries
     'x15': 'Total Accounts',             # total_acc

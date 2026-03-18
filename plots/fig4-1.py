@@ -4,7 +4,6 @@ import pandas as pd
 import numpy as np
 import os
 
-# 设置保存路径
 save_path = r'D:\study\Credit(1)\Credit\outcome\bankfear\\'
 os.makedirs(save_path, exist_ok=True)
 

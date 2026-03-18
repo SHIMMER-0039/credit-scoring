@@ -130,11 +130,11 @@ This script compares homogeneous stacking, heterogeneous stacking, and the propo
 
 ### Additional note on experimental results
 
-Due to the stochastic nature of machine learning algorithms and data sampling procedures, the results of individual runs may exhibit slight variations across different executions. To mitigate this effect and obtain more stable results, the example scripts included in this repository perform a limited grid search over several model parameters in order to identify better-performing configurations.
+Due to the stochastic nature of machine learning algorithms and data sampling procedures, minor variations in the results may occur across different executions. To improve stability, the provided scripts fix random seeds where possible and include limited parameter search procedures.
 
-In addition, the running times reported in the main paper correspond to the execution time of the base learning models after the feature selection stage has been completed. That is, the reported time measurements do not include the feature selection process itself but only the training time of the subsequent classification models.
+The running times reported in the paper correspond to the training phase of the learning models after feature selection, and do not include the feature selection stage itself.
 
-Because the experiments involve machine learning algorithms, stochastic optimization, multi-threaded execution, and hardware-dependent numerical computation, slight differences in the reported results may occur across different computing environments. Such differences may arise from variations in CPU/GPU architecture, library versions, thread scheduling, or floating-point operations. These deviations are expected to remain within an acceptable reproducibility range and do not affect the substantive conclusions of the paper.
+Small numerical differences may also arise across computing environments due to implementation details (e.g., multi-threading or library versions). These variations are expected to be negligible and do not affect the overall conclusions of the study.
 
 ## References
 

@@ -466,9 +466,7 @@ for dataset_name, cfg in DATASETS.items():
                 print(f"Type I Error: {e1:.6f}")
                 print(f"Type II Error: {e2:.6f}")
 
-                print("\nModel contributions:")
-                for i, m in enumerate(final_model.base_models):
-                    print(f"{type(m).__name__}: {contributions[i]:.2%}")
+
 
                 # -------------------------
                 # 4.7 Save one grid result

@@ -48,17 +48,10 @@ FEATURE_METHODS = [
 ]
 
 PARAM_GRID = {
-    "n_estimators": [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100],
-    "max_depth": [1, 2, 3, 4, 5, 6, 7, 8, 9],
-    "learning_rate": [0.01, 0.02, 0.1, 0.2]
+    "n_estimators": [100,300,500,700,900,1100],
+    "max_depth": [1,2,3,4,5,6,7,8,9,10,11],
+    "learning_rate": [0.01,0.02,0.1,0.2]
 }
-
-# PARAM_GRID = {
-#     "n_estimators": [100],
-#     "max_depth": [1],
-#     "learning_rate": [0.01]
-# }
-
 
 
 FAST_MODE = False
@@ -82,7 +75,7 @@ DATASETS = {
     },
     "shandong": {
         "data_file": r'D:\study\credit_scoring_datasets\shandong.csv',
-        "shuffle_file": r'D:\study\Credit(1)\Credit\shuffle_index\shandong\shuffle_index.pickle',
+        "shuffle_file": r'D:\study\Credit(1),,.,\Credit\shuffle_index\shandong\shuffle_index.pickle',
         "target_col": 'label',
         "drop_cols": ['label'],
     },
@@ -93,6 +86,7 @@ DATASETS = {
         "drop_cols": ['DEFAULT', 'LOAN IDENTIFIER'],
     }
 }
+
 
 
 # =========================================================
@@ -466,7 +460,9 @@ for dataset_name, cfg in DATASETS.items():
                 print(f"Type I Error: {e1:.6f}")
                 print(f"Type II Error: {e2:.6f}")
 
-
+                print("\nModel contributions:")
+                for i, m in enumerate(final_model.base_models):
+                    print(f"{type(m).__name__}: {contributions[i]:.2%}")
 
                 # -------------------------
                 # 4.7 Save one grid result
@@ -506,8 +502,33 @@ for dataset_name, cfg in DATASETS.items():
                 }
 
                 dataset_grid_results.append(grid_result)
+                temp_result = {
+                    "dataset_name": dataset_name,
+                    "param_grid": PARAM_GRID,
+                    "feature_selection_summary": {
+                        "best": best_fs,
+                        "all_results": fs_all_results,
+                    },
+                    "all_grid_results": dataset_grid_results,
+                    "best_result": best_result,
+                }
 
-                # 用 validation AUC 选最优
+                temp_pickle_path = os.path.join(
+                    SAVE_DIR,
+                    f"AAESS_{dataset_name}_grid_results_TEMP.pickle"
+                )
+
+                with open(temp_pickle_path, "wb") as f:
+                    pickle.dump(temp_result, f)
+                temp_json_path = os.path.join(
+                    SAVE_DIR,
+                    f"AAESS_{dataset_name}_grid_results_TEMP.json"
+                )
+
+                with open(temp_json_path, "w", encoding="utf-8") as f:
+                    json.dump(to_serializable(temp_result), f, indent=2, ensure_ascii=False)
+
+                print(f"[Real-time saving] {len(dataset_grid_results)} grids saved.")
                 if valid_auc > best_score:
                     best_score = valid_auc
                     best_result = grid_result

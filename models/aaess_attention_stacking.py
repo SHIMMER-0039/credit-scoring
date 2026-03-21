@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 from sklearn.base import clone
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import brier_score_loss
+from sklearn.metrics import brier_score_loss, roc_auc_score
 from sklearn.model_selection import StratifiedKFold
 
 from main.outlier_detection import OutlierDetector
@@ -69,7 +69,8 @@ class AAESSAttentionStacking:
             print(msg)
 
     @staticmethod
-    def _softmax(x: np.ndarray, axis: int = 1) -> np.ndarray:
+    def _softmax(x: np.ndarray, axis: int = 1, temperature: float = 1.0) -> np.ndarray:
+        x = x / temperature
         x = x - np.max(x, axis=axis, keepdims=True)
         exp_x = np.exp(x)
         return exp_x / np.sum(exp_x, axis=axis, keepdims=True)
@@ -102,16 +103,20 @@ class AAESSAttentionStacking:
         )
 
     def _compute_attention_weights(
-        self,
-        reliability_vectors: np.ndarray,
-        model_confidences: np.ndarray,
+            self,
+            reliability_vectors: np.ndarray,
+            model_confidences: np.ndarray,
     ) -> np.ndarray:
         """
         reliability_vectors: (n_samples, n_features)
         model_confidences:   (n_models, n_features)
         returns:             (n_samples, n_models)
         """
-        scores = reliability_vectors @ model_confidences.T
+        raw_scores = reliability_vectors @ model_confidences.T
+        if hasattr(self, 'performance_biases_'):
+            scores = raw_scores + self.performance_biases_
+        else:
+            scores = raw_scores
         return self._softmax(scores, axis=1)
 
     def _generate_oof_predictions(self, X: np.ndarray, y: np.ndarray):
@@ -148,32 +153,34 @@ class AAESSAttentionStacking:
         return oof_predictions, fitted_base_models
 
     def _build_model_confidences(
-        self,
-        y_true: np.ndarray,
-        oof_predictions: np.ndarray,
-        base_feature_confidence: np.ndarray,
+            self,
+            y_true: np.ndarray,
+            oof_predictions: np.ndarray,
+            base_feature_confidence: np.ndarray,
     ) -> np.ndarray:
         """
-        Build learner-specific confidence vectors.
-
-        Practical implementation:
-        - use robust feature-wise confidence as backbone
-        - scale it by each learner's OOF quality
+        Build learner-specific confidence vectors based on ACC and AUC.
         """
+        from sklearn.metrics import roc_auc_score, accuracy_score
+
         n_models = oof_predictions.shape[1]
-        model_confidences = []
-
+        model_scores = []
         for j in range(n_models):
-            pred_j = np.clip(oof_predictions[:, j], 1e-12, 1 - 1e-12)
+            pred_proba_j = np.clip(oof_predictions[:, j], 1e-12, 1 - 1e-12)
+            pred_class_j = (pred_proba_j >= 0.5).astype(int)
+            auc = roc_auc_score(y_true, pred_proba_j)
+            acc = accuracy_score(y_true, pred_class_j)
+            combined_score = 0.7 * auc + 0.3 * acc
+            model_scores.append(combined_score)
 
-            # Lower Brier score -> higher multiplier
-            bs = brier_score_loss(y_true, pred_j)
-            multiplier = 1.0 / max(bs, 1e-12)
+        model_scores = np.array(model_scores)
 
-            gamma_j = base_feature_confidence * multiplier
-            model_confidences.append(gamma_j)
+        alpha = 20.0
+        performance_biases = (model_scores - np.max(model_scores)) * alpha
+        self.performance_biases_ = performance_biases
+        model_confidences = np.tile(base_feature_confidence, (n_models, 1))
 
-        return np.vstack(model_confidences)
+        return model_confidences
 
     def fit(self, X, y):
         X, y = self._ensure_numpy(X, y)
@@ -279,7 +286,7 @@ class AAESSAttentionStacking:
 
         if hasattr(self.meta_model_, "predict_proba"):
             return self.meta_model_.predict_proba(meta_features)
- 
+
         pred = self.meta_model_.predict(meta_features)
         return np.column_stack([1 - pred, pred])
 

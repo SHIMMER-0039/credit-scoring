@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-
+from sklearn.metrics import f1_score
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import mutual_info_classif
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
     recall_score,
-    roc_auc_score, 
+    roc_auc_score,
 )
-
+from sklearn.feature_selection import RFE
 
 class FeatureEvaluator:
     """
@@ -105,18 +105,18 @@ class FeatureEvaluator:
 
         return scores
 
-    def _gain_rfe(self, X: np.ndarray, y: np.ndarray) -> np.ndarray:
-        """
-        Practical proxy implementation:
-        use RandomForest feature importance as a gain-based ranking signal.
-        """
-        model = RandomForestClassifier(
+    from sklearn.feature_selection import RFE
+
+    def _gain_rfe(self, X, y):
+        base = RandomForestClassifier(
             n_estimators=self.n_estimators,
             random_state=self.random_state,
             n_jobs=-1,
         )
-        model.fit(X, y)
-        return model.feature_importances_
+        rfe = RFE(estimator=base, n_features_to_select=1, step=1)
+        rfe.fit(X, y)
+        scores = 1.0 / rfe.ranking_.astype(float)
+        return scores
 
     def _info_gain_fe(self, X: np.ndarray, y: np.ndarray) -> np.ndarray:
         scores = mutual_info_classif(
@@ -127,28 +127,33 @@ class FeatureEvaluator:
         )
         return np.asarray(scores, dtype=float)
 
-    def _relief_fe(self, X: np.ndarray, y: np.ndarray) -> np.ndarray:
-        """
-        Lightweight Relief-style surrogate:
-        class mean separation normalized by within-class variance.
-        """
-        pos_mask = (y == 1)
-        neg_mask = (y == 0)
+    def _relief_fe(self, X, y, n_samples=500):
+        n, d = X.shape
+        weights = np.zeros(d)
+        rng = np.random.RandomState(self.random_state)
+        indices = rng.choice(n, size=min(n_samples, n), replace=False)
 
-        if pos_mask.sum() == 0 or neg_mask.sum() == 0:
-            return np.zeros(X.shape[1], dtype=float)
+        for i in indices:
+            same_mask = (y == y[i])
+            diff_mask = ~same_mask
+            same_mask[i] = False
 
-        X_pos = X[pos_mask]
-        X_neg = X[neg_mask]
+            if same_mask.sum() == 0 or diff_mask.sum() == 0:
+                continue
 
-        pos_mean = np.mean(X_pos, axis=0)
-        neg_mean = np.mean(X_neg, axis=0)
+            dist_same = np.sum((X[same_mask] - X[i]) ** 2, axis=1)
+            dist_diff = np.sum((X[diff_mask] - X[i]) ** 2, axis=1)
 
-        pos_var = np.var(X_pos, axis=0)
-        neg_var = np.var(X_neg, axis=0)
+            nearest_hit = X[same_mask][np.argmin(dist_same)]
+            nearest_miss = X[diff_mask][np.argmin(dist_diff)]
 
-        scores = np.abs(pos_mean - neg_mean) / (pos_var + neg_var + 1e-12)
-        return scores
+            weights += np.abs(X[i] - nearest_miss) - np.abs(X[i] - nearest_hit)
+
+        weights /= len(indices)
+        weights = weights - weights.min()
+        if weights.max() > 0:
+            weights /= weights.max()
+        return weights
 
 
 def is_pareto_efficient(values: np.ndarray) -> np.ndarray:
@@ -214,8 +219,8 @@ def evaluate_model(train_x, train_y, valid_x, valid_y) -> np.ndarray:
     auc = roc_auc_score(y_valid, pred_proba)
     prec = precision_score(y_valid, pred, zero_division=0)
     rec = recall_score(y_valid, pred, zero_division=0)
-
-    return np.array([acc, auc, prec, rec], dtype=float)
+    f1 = f1_score(y_valid, pred, zero_division=0)
+    return np.array([acc, auc, prec, rec, f1], dtype=float)
 
 
 def _to_numpy(x) -> np.ndarray:

@@ -75,7 +75,7 @@ DATASETS = {
     },
     "shandong": {
         "data_file": r'D:\study\credit_scoring_datasets\shandong.csv',
-        "shuffle_file": r'D:\study\Credit(1),,.,\Credit\shuffle_index\shandong\shuffle_index.pickle',
+        "shuffle_file": r'D:\study\Credit(1)\Credit\shuffle_index\shandong\shuffle_index.pickle',
         "target_col": 'label',
         "drop_cols": ['label'],
     },

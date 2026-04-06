@@ -567,7 +567,7 @@ def build_homogeneous_stack(base_estimator, n_clones=3):
         n_folds=5,
         random_state=SEED,
         use_original_features=False,
-        meta_model=LogisticRegression(max_iter=1000"),
+        meta_model=LogisticRegression(max_iter="1000"),
         verbose=False,
     )
 

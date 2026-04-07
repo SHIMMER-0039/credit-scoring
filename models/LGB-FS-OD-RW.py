@@ -14,10 +14,18 @@ from sklearn.metrics import (
     precision_score, recall_score, f1_score,
     brier_score_loss, average_precision_score
 )
+import os
+import sys
 
-from main.feature_selection import FeatureEvaluator, is_pareto_efficient, evaluate_model
-from main.outlier_detection import OutlierDetector
-from main.robust_weighting import RobustWeightingModule
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
+from models.feature_selection import FeatureEvaluator, is_pareto_efficient, evaluate_model
+from models.outlier_detection import OutlierDetector
+from models.robust_weighting import RobustWeightingModule
 
 
 # =========================================================

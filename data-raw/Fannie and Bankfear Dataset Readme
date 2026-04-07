@@ -1,4 +1,5 @@
 We have addressed the data accessibility issue by depositing all datasets in a persistent Zenodo repository (DOI: 10.5072/zenodo.484487，URL:https://sandbox.zenodo.org/records/484487). Furthermore, MD5 checksums are now provided in this README for integrity verification.
+After downloading, please place these files into the `data-raw/` directory to ensure the Python scripts can execute correctly.
 Dataset File,Checksum (MD5)
 bankfear.csv,fb261c12937edd07dad8a71fd3ba30af
 fannie.zip,57b7eac301cd41a09c40f75fb6cc01ab

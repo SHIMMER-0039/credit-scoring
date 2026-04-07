@@ -1,330 +1,429 @@
-# main/aaess_attention_stacking.py
-
 from __future__ import annotations
 
-import numpy as np
-from sklearn.base import clone
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import brier_score_loss, roc_auc_score
-from sklearn.model_selection import StratifiedKFold
+import os
+import json
+import pickle
+import random
 
+import numpy as np
+import pandas as pd
+import lightgbm as lgb
+from scipy.stats import ks_2samp
+from sklearn.metrics import (
+    accuracy_score, roc_auc_score,
+    precision_score, recall_score, f1_score,
+    brier_score_loss, average_precision_score
+)
+import os
+import sys
+
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
+from models.feature_selection import FeatureEvaluator, is_pareto_efficient, evaluate_model
 from models.outlier_detection import OutlierDetector
 from models.robust_weighting import RobustWeightingModule
 
 
-class AAESSAttentionStacking:
-    """
-    Adaptive Attention-Enhanced Sequential Stacking (AAESS)
+# =========================================================
+# 0. Config
+# =========================================================
+SEED = 42
+random.seed(SEED)
+np.random.seed(SEED)
 
-    Workflow:
-    1. Outlier detection on training data
-    2. Select robust weighting model:
-       - outlier ratio > 5%  -> Huber
-       - otherwise           -> BayesianRidge
-    3. Fit robust weighting module
-    4. Generate OOF predictions from base learners
-    5. Compute learner-specific confidence vectors
-    6. Compute attention weights alpha_{k,i}
-    7. Build attention-weighted meta features
-    8. Train logistic regression meta-classifier
-    """
+DATASET_NAME = "give"
+DATA_FILE = r'D:\study\credit_scoring_datasets\give_me_some_credit_cleaned.csv'
+SHUFFLE_FILE = r'D:\study\Credit(1)\Credit\shuffle_index\give\shuffle_index.pickle'
+SAVE_DIR = r'D:\study\second\outcome\give_grid_lgb_with_fs_od'
 
-    def __init__(
-        self,
-        base_models,
-        n_folds: int = 5,
-        meta_model=None,
-        use_original_features: bool = True,
-        outlier_detector=None,
-        robust_weighting_module=None,
-        random_state: int = 42,
-        verbose: bool = True,
-    ):
-        self.base_models = base_models
-        self.n_folds = n_folds
-        self.meta_model = meta_model if meta_model is not None else LogisticRegression(max_iter=1000)
-        self.use_original_features = use_original_features
-        self.random_state = random_state
-        self.verbose = verbose
+TARGET_COL = 'SeriousDlqin2yrs'
+DROP_COLS = ['SeriousDlqin2yrs']
 
-        self.outlier_detector = outlier_detector
-        self.robust_weighting_module = robust_weighting_module
+FEATURE_METHODS = [
+    "ClassifierFE",
+    "CorrelationFE",
+    "GainRFE",
+    "InfoGainFE",
+    "ReliefFE",
+]
 
-        self.fitted_base_models_ = None
-        self.meta_model_ = None
+REMOVE_OUTLIERS = True
 
-        self.oof_predictions_ = None
-        self.model_confidences_ = None
-        self.train_attention_weights_ = None
-        self.test_attention_weights_ = None
+ROBUST_MODE = "auto"
 
-        self.train_meta_features_ = None
-        self.test_meta_features_ = None
+FAST_MODE = False
+FAST_MAX_SAMPLES = 50000
 
-        self.outlier_ratio_ = None
-        self.selected_weighting_model_ = None
+os.makedirs(SAVE_DIR, exist_ok=True)
 
-    def _log(self, msg: str):
-        if self.verbose:
-            print(msg)
 
-    @staticmethod
-    def _softmax(x: np.ndarray, axis: int = 1, temperature: float = 1.0) -> np.ndarray:
-        x = x / temperature
-        x = x - np.max(x, axis=axis, keepdims=True)
-        exp_x = np.exp(x)
-        return exp_x / np.sum(exp_x, axis=axis, keepdims=True)
+# =========================================================
+# 1. Helpers
+# =========================================================
+def h_mean(precision: float, recall: float) -> float:
+    if precision + recall == 0:
+        return 0.0
+    return 2 * (precision * recall) / (precision + recall)
 
-    def _ensure_numpy(self, x, y=None):
-        x_np = x.values if hasattr(x, "values") else np.asarray(x)
-        if y is None:
-            return x_np.astype(float)
-        y_np = y.values if hasattr(y, "values") else np.asarray(y)
-        return x_np.astype(float), y_np.astype(float)
 
-    def _build_default_outlier_detector(self):
-        return OutlierDetector(
-            z_thresh=3.0,
-            iqr_multiplier=1.5,
-            contamination="auto",
-            vote_threshold=3,
-            random_state=self.random_state,
-            lof_n_neighbors=20,
-            verbose=self.verbose,
-        )
+def type1error(y_proba, y_true, threshold=0.5):
+    y_pred = (y_proba >= threshold).astype(int)
+    fp = ((y_pred == 1) & (y_true == 0)).sum()
+    denom = (y_true == 0).sum()
+    return fp / denom if denom > 0 else 0.0
 
-    def _build_default_weighting_module(self, weighting_model_name: str):
-        return RobustWeightingModule(
-            weighting_model=weighting_model_name,
-            huber_epsilon=1.35,
-            normalize_weights=True,
-            standardize_x=True,
-            verbose=self.verbose,
-        )
 
-    def _compute_attention_weights(
-            self,
-            reliability_vectors: np.ndarray,
-            model_confidences: np.ndarray,
-    ) -> np.ndarray:
-        """
-        reliability_vectors: (n_samples, n_features)
-        model_confidences:   (n_models, n_features)
-        returns:             (n_samples, n_models)
-        """
-        raw_scores = reliability_vectors @ model_confidences.T
-        if hasattr(self, 'performance_biases_'):
-            scores = raw_scores + self.performance_biases_
-        else:
-            scores = raw_scores
-        return self._softmax(scores, axis=1)
+def type2error(y_proba, y_true, threshold=0.5):
+    y_pred = (y_proba >= threshold).astype(int)
+    fn = ((y_pred == 0) & (y_true == 1)).sum()
+    denom = (y_true == 1).sum()
+    return fn / denom if denom > 0 else 0.0
 
-    def _generate_oof_predictions(self, X: np.ndarray, y: np.ndarray):
-        n_samples = X.shape[0]
-        n_models = len(self.base_models)
-        oof_predictions = np.zeros((n_samples, n_models), dtype=float)
 
-        skf = StratifiedKFold(
-            n_splits=self.n_folds,
-            shuffle=True,
-            random_state=self.random_state
-        )
+def safe_precision(y_true, y_pred):
+    return precision_score(y_true, y_pred, zero_division=0)
 
-        fitted_base_models = []
 
-        for model_idx, base_model in enumerate(self.base_models):
-            self._log(f"Training base model {model_idx + 1}/{n_models}: {type(base_model).__name__}")
+def safe_recall(y_true, y_pred):
+    return recall_score(y_true, y_pred, zero_division=0)
 
-            for train_idx, valid_idx in skf.split(X, y):
-                model = clone(base_model)
-                model.fit(X[train_idx], y[train_idx])
 
-                if hasattr(model, "predict_proba"):
-                    pred = model.predict_proba(X[valid_idx])[:, 1]
-                else:
-                    pred = model.predict(X[valid_idx])
+def safe_f1(y_true, y_pred):
+    return f1_score(y_true, y_pred, zero_division=0)
 
-                oof_predictions[valid_idx, model_idx] = pred
 
-            final_model = clone(base_model)
-            final_model.fit(X, y)
-            fitted_base_models.append(final_model)
+def to_serializable(obj):
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, (np.floating,)):
+        return float(obj)
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, dict):
+        return {k: to_serializable(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [to_serializable(v) for v in obj]
+    return obj
 
-        return oof_predictions, fitted_base_models
 
-    def _build_model_confidences(
-            self,
-            y_true: np.ndarray,
-            oof_predictions: np.ndarray,
-            base_feature_confidence: np.ndarray,
-    ) -> np.ndarray:
-        """
-        Build learner-specific confidence vectors based on ACC and AUC.
-        """
-        from sklearn.metrics import roc_auc_score, accuracy_score
+# =========================================================
+# 2. Feature Selection
+# =========================================================
+def run_feature_selection(train_x, train_y, valid_x, valid_y, methods):
+    candidate_results = []
+    for method in methods:
+        evaluator = FeatureEvaluator(method=method, random_state=SEED)
+        evaluator.fit(train_x.values, train_y)
 
-        n_models = oof_predictions.shape[1]
-        model_scores = []
-        for j in range(n_models):
-            pred_proba_j = np.clip(oof_predictions[:, j], 1e-12, 1 - 1e-12)
-            pred_class_j = (pred_proba_j >= 0.5).astype(int)
-            auc = roc_auc_score(y_true, pred_proba_j)
-            acc = accuracy_score(y_true, pred_class_j)
-            combined_score = 0.7 * auc + 0.3 * acc
-            model_scores.append(combined_score)
+        scores = np.asarray(evaluator.scores_, dtype=float)
+        scores = np.nan_to_num(scores, nan=0.0, posinf=0.0, neginf=0.0)
 
-        model_scores = np.array(model_scores)
+        threshold = 0.05 * np.max(scores)
+        selected_indices = np.where(scores > threshold)[0].tolist()
 
-        alpha = 20.0
-        performance_biases = (model_scores - np.max(model_scores)) * alpha
-        self.performance_biases_ = performance_biases
-        model_confidences = np.tile(base_feature_confidence, (n_models, 1))
+        if len(selected_indices) == 0:
+            selected_indices = np.argsort(scores)[::-1][:1].tolist()
 
-        return model_confidences
+        selected_indices = sorted(selected_indices)
+        selected_names = train_x.columns[selected_indices].tolist()
 
-    def fit(self, X, y):
-        X, y = self._ensure_numpy(X, y)
+        train_sub = train_x.iloc[:, selected_indices].values
+        valid_sub = valid_x.iloc[:, selected_indices].values
 
-        self._log("Step 1: Outlier detection")
-        if self.outlier_detector is None:
-            self.outlier_detector = self._build_default_outlier_detector()
+        metric_values = evaluate_model(train_sub, train_y, valid_sub, valid_y)
+        metrics = {
+            "acc": float(metric_values[0]),
+            "auc": float(metric_values[1]),
+            "precision": float(metric_values[2]),
+            "recall": float(metric_values[3]),
+        }
 
-        self.outlier_detector.fit(X)
-        self.outlier_ratio_ = self.outlier_detector.result_.outlier_ratio
-        self.selected_weighting_model_ = self.outlier_detector.result_.selected_weighting_model
+        candidate_results.append({
+            "method": method,
+            "threshold": float(threshold),
+            "selected_indices": selected_indices,
+            "selected_names": selected_names,
+            "n_features": len(selected_indices),
+            "metrics": metrics,
+        })
+        print(f"[{method}] n_features={len(selected_indices)}, metrics={metrics}")
 
-        self._log(f"Outlier ratio: {self.outlier_ratio_:.4%}")
-        self._log(f"Selected weighting model: {self.selected_weighting_model_}")
+    score_matrix = np.array([
+        [r["metrics"]["acc"], r["metrics"]["auc"], r["metrics"]["precision"], r["metrics"]["recall"]]
+        for r in candidate_results
+    ])
 
-        self._log("Step 2: Robust weighting")
-        if self.robust_weighting_module is None:
-            self.robust_weighting_module = self._build_default_weighting_module(
-                self.selected_weighting_model_
+    pareto_mask = is_pareto_efficient(score_matrix)
+    for i, flag in enumerate(pareto_mask):
+        candidate_results[i]["pareto_efficient"] = bool(flag)
+
+    pareto_results = [r for r in candidate_results if r["pareto_efficient"]]
+    pareto_results = sorted(
+        pareto_results,
+        key=lambda r: (-r["metrics"]["auc"], -r["metrics"]["recall"], r["n_features"], -r["metrics"]["acc"])
+    )
+
+    best = pareto_results[0]
+
+    print("\nSelected feature subset:")
+    print(f"  method: {best['method']}")
+    print(f"  n_features: {best['n_features']}")
+    print(f"  features: {best['selected_names']}")
+    print(f"  metrics: {best['metrics']}")
+
+    return best, candidate_results
+
+
+# =========================================================
+# 3. Data loading / FS / Outlier Detection
+# =========================================================
+print(f"Loading data for {DATASET_NAME}...")
+data = pd.read_csv(DATA_FILE, low_memory=True)
+data = data.replace([-np.inf, np.inf, np.nan], 0)
+
+if FAST_MODE and len(data) > FAST_MAX_SAMPLES:
+    data = data.iloc[:FAST_MAX_SAMPLES].copy()
+
+features = data.drop(DROP_COLS, axis=1)
+labels = data[TARGET_COL]
+
+train_size = int(features.shape[0] * 0.8)
+valid_size = int(features.shape[0] * 0.1)
+test_size = features.shape[0] - train_size - valid_size
+
+with open(SHUFFLE_FILE, 'rb') as f:
+    shuffle_index = pickle.load(f)
+
+if FAST_MODE:
+    shuffle_index = [i for i in shuffle_index if i < len(features)]
+
+train_index = shuffle_index[:train_size]
+valid_index = shuffle_index[train_size:(train_size + valid_size)]
+test_index = shuffle_index[(train_size + valid_size):(train_size + valid_size + test_size)]
+
+train_x, train_y = features.iloc[train_index, :], labels.iloc[train_index]
+valid_x, valid_y = features.iloc[valid_index, :], labels.iloc[valid_index]
+test_x, test_y = features.iloc[test_index, :], labels.iloc[test_index]
+
+full_train_x = pd.concat([train_x, valid_x], axis=0)
+full_train_y = pd.concat([train_y, valid_y], axis=0)
+
+print("\nRunning Feature Selection...")
+best_fs, fs_all_results = run_feature_selection(
+    train_x=train_x, train_y=train_y, valid_x=valid_x, valid_y=valid_y, methods=FEATURE_METHODS
+)
+
+selected_indices = best_fs["selected_indices"]
+selected_names = best_fs["selected_names"]
+
+filtered_full_train_x = full_train_x.iloc[:, selected_indices].values
+filtered_test_x = test_x.iloc[:, selected_indices].values
+
+print("\nRunning Outlier Detection...")
+outlier_detector = OutlierDetector(
+    z_thresh=3.0,
+    iqr_multiplier=1.5,
+    contamination="auto",
+    vote_threshold=3,
+    random_state=SEED,
+    lof_n_neighbors=20
+)
+outlier_detector.fit(filtered_full_train_x)
+outlier_mask = outlier_detector.get_outlier_mask()
+
+if REMOVE_OUTLIERS:
+    inlier_mask = (outlier_mask == 0)
+    filtered_full_train_x_clean = filtered_full_train_x[inlier_mask]
+    full_train_y_clean = full_train_y.iloc[inlier_mask].reset_index(drop=True)
+else:
+    filtered_full_train_x_clean = filtered_full_train_x
+    full_train_y_clean = full_train_y.reset_index(drop=True)
+
+
+# =========================================================
+# 4. Robust Weighting 
+# =========================================================
+
+robust_module = None
+train_sample_weights = None
+robust_report_file = None
+
+outlier_ratio = float((outlier_mask == 1).sum()) / len(outlier_mask)
+
+if ROBUST_MODE == "auto":
+    if outlier_ratio > 0.05:
+        selected_robust_mode = "Huber"
+    else:
+        selected_robust_mode = "BayesianRidge"
+
+
+print(f"\nOutlier ratio: {outlier_ratio:.4%}")
+print(f"Selected robust mode: {selected_robust_mode}")
+
+if selected_robust_mode in {"Huber", "BayesianRidge"}:
+    robust_report_file = os.path.join(
+        SAVE_DIR, f"robust_weighting_{selected_robust_mode}_{DATASET_NAME}.json"
+    )
+
+    print(f"\nRunning Robust Weighting with {selected_robust_mode}...")
+    robust_module = RobustWeightingModule(
+        weighting_model=selected_robust_mode,
+        huber_epsilon=5.0,
+        normalize_weights=True,
+        standardize_x=False,
+        verbose=True,
+    )
+    robust_module.fit(filtered_full_train_x_clean, full_train_y_clean)
+    train_sample_weights = robust_module.transform_sample_weights(filtered_full_train_x_clean)
+
+    print("Robust sample weights summary:")
+    print(f"  min : {train_sample_weights.min():.6f}")
+    print(f"  max : {train_sample_weights.max():.6f}")
+    print(f"  mean: {train_sample_weights.mean():.6f}")
+
+    robust_module.save_report(robust_report_file)
+    print(f"Robust weighting report saved to: {robust_report_file}")
+
+elif selected_robust_mode == "None":
+    print("\nRobust weighting disabled. Training without sample weights.")
+    train_sample_weights = None
+
+else:
+    raise ValueError("ROBUST_MODE must be one of {'auto', 'Huber', 'BayesianRidge', 'None'}")
+
+
+
+# =========================================================
+# 5. Grid Search: LightGBM Hyperparameters
+# =========================================================
+PARAM_GRID = {
+    "n_estimators": [100,200,300,400,500,600,700,800,900,1000,1100],
+    "max_depth": [1,2,3,4,5,6,7,8,9],
+    "learning_rate": [0.01,0.02,0.1,0.2]
+}
+
+all_results = []
+best_result = None
+best_score = -np.inf
+
+print("\n" + "=" * 80)
+print(f"{'Grid Search Starting':^80}")
+print("=" * 80)
+
+for n_estimators in PARAM_GRID["n_estimators"]:
+    for max_depth in PARAM_GRID["max_depth"]:
+        for learning_rate in PARAM_GRID["learning_rate"]:
+
+            model_params = {
+                "n_estimators": n_estimators,
+                "max_depth": max_depth,
+                "learning_rate": learning_rate,
+                "n_jobs": -1,
+                "random_state": SEED,
+            }
+
+            model = lgb.LGBMClassifier(**model_params)
+
+            if train_sample_weights is not None:
+                model.fit(
+                    filtered_full_train_x_clean,
+                    full_train_y_clean,
+                    sample_weight=train_sample_weights
+                )
+            else:
+                model.fit(filtered_full_train_x_clean, full_train_y_clean)
+
+            y_proba = model.predict_proba(filtered_test_x)[:, 1]
+            y_pred = model.predict(filtered_test_x)
+
+            auc = roc_auc_score(test_y, y_proba)
+            acc = accuracy_score(test_y, y_pred)
+            prec = safe_precision(test_y, y_pred)
+            rec = safe_recall(test_y, y_pred)
+            f1 = safe_f1(test_y, y_pred)
+            hm = h_mean(prec, rec)
+            bs = brier_score_loss(test_y, y_proba)
+            ap = average_precision_score(test_y, y_proba)
+            ks = ks_2samp(y_proba[test_y == 1], y_proba[test_y != 1]).statistic
+            e1 = type1error(y_proba, test_y, threshold=0.5)
+            e2 = type2error(y_proba, test_y, threshold=0.5)
+
+            res_entry = {
+                "params": model_params,
+                "outlier_detection": {
+                    "enabled": bool(REMOVE_OUTLIERS),
+                    "n_removed": int((outlier_mask == 1).sum()) if REMOVE_OUTLIERS else 0,
+                    "n_remaining": int(len(full_train_y_clean)),
+                },
+                "robust_weighting": {
+                    "enabled": ROBUST_MODE in {"Huber", "BayesianRidge"},
+                    "mode": ROBUST_MODE,
+                    "sample_weight_min": float(train_sample_weights.min()) if train_sample_weights is not None else None,
+                    "sample_weight_max": float(train_sample_weights.max()) if train_sample_weights is not None else None,
+                    "sample_weight_mean": float(train_sample_weights.mean()) if train_sample_weights is not None else None,
+                },
+                "metrics": {
+                    "auc": float(auc),
+                    "acc": float(acc),
+                    "f1": float(f1),
+                    "ks": float(ks),
+                    "hm": float(hm),
+                    "brier": float(bs),
+                    "prec": float(prec),
+                    "rec": float(rec),
+                    "ap": float(ap),
+                    "type1_err": float(e1),
+                    "type2_err": float(e2)
+                }
+            }
+            all_results.append(res_entry)
+
+            print(
+                f"Testing >> n_est: {n_estimators:4} | depth: {max_depth:1} | lr: {learning_rate:.2f} "
+                f"==> AUC: {auc:.4f} | KS: {ks:.4f} | F1: {f1:.4f}"
             )
 
-        self.robust_weighting_module.fit(X, y)
-        reliability_vectors = self.robust_weighting_module.sample_reliability_vector_
-        base_feature_confidence = self.robust_weighting_module.get_model_confidence()
+            if auc > best_score:
+                best_score = auc
+                best_result = res_entry
 
-        self._log("Step 3: OOF predictions")
-        oof_predictions, fitted_base_models = self._generate_oof_predictions(X, y)
 
-        self._log("Step 4: Learner-specific confidence vectors")
-        model_confidences = self._build_model_confidences(
-            y_true=y,
-            oof_predictions=oof_predictions,
-            base_feature_confidence=base_feature_confidence,
-        )
+# =========================================================
+# 6. Final Summary & Save
+# =========================================================
+print("\n" + "=" * 80)
+print(f"{'BEST MODEL SUMMARY':^80}")
+print("=" * 80)
+bm = best_result["metrics"]
+bp = best_result["params"]
 
-        self._log("Step 5: Attention weights")
-        attention_weights = self._compute_attention_weights(
-            reliability_vectors=reliability_vectors,
-            model_confidences=model_confidences,
-        )
+print(f"Robust mode: {ROBUST_MODE}")
+print(f"Optimal Params: n_est={bp['n_estimators']}, depth={bp['max_depth']}, lr={bp['learning_rate']}")
+print("-" * 80)
+print(f"AUC:      {bm['auc']:.6f} | Accuracy: {bm['acc']:.6f} | KS:   {bm['ks']:.6f}")
+print(f"F1 Score: {bm['f1']:.6f} | H-Measure: {bm['hm']:.6f} | Brier: {bm['brier']:.6f}")
+print(f"Type I:   {bm['type1_err']:.6f} | Type II: {bm['type2_err']:.6f}")
+print("=" * 80)
 
-        weighted_oof_predictions = attention_weights * oof_predictions
+output_final = {
+    "dataset": DATASET_NAME,
+    "best_overall": best_result,
+    "all_combinations": all_results,
+    "feature_selection_summary": best_fs,
+    "selected_feature_names": selected_names,
+    "remove_outliers": REMOVE_OUTLIERS,
+    "robust_mode_input": ROBUST_MODE,
+    "robust_mode_selected": selected_robust_mode,
+    "outlier_ratio": outlier_ratio,
+    "robust_report_file": robust_report_file,
+}
 
-        self._log("Step 6: Meta-features")
-        if self.use_original_features:
-            meta_features = np.hstack([X, weighted_oof_predictions])
-        else:
-            meta_features = weighted_oof_predictions
+save_file = os.path.join(SAVE_DIR, f"LGBM_Full_Grid_{ROBUST_MODE}_{DATASET_NAME}.json")
+with open(save_file, 'w', encoding='utf-8') as f:
+    json.dump(to_serializable(output_final), f, indent=4, ensure_ascii=False)
 
-        self._log("Step 7: Train meta-classifier")
-        meta_model = clone(self.meta_model)
-        meta_model.fit(meta_features, y)
-
-        self.fitted_base_models_ = fitted_base_models
-        self.meta_model_ = meta_model
-        self.oof_predictions_ = oof_predictions
-        self.model_confidences_ = model_confidences
-        self.train_attention_weights_ = attention_weights
-        self.train_meta_features_ = meta_features
-
-        return self
-
-    def _predict_base_outputs(self, X: np.ndarray) -> np.ndarray:
-        if self.fitted_base_models_ is None:
-            raise RuntimeError("Model has not been fitted.")
-
-        n_samples = X.shape[0]
-        n_models = len(self.fitted_base_models_)
-        base_predictions = np.zeros((n_samples, n_models), dtype=float)
-
-        for j, model in enumerate(self.fitted_base_models_):
-            if hasattr(model, "predict_proba"):
-                pred = model.predict_proba(X)[:, 1]
-            else:
-                pred = model.predict(X)
-            base_predictions[:, j] = pred
-
-        return base_predictions
-
-    def predict_proba(self, X):
-        if self.meta_model_ is None:
-            raise RuntimeError("Call fit() before predict_proba().")
-
-        X = self._ensure_numpy(X)
-        base_predictions = self._predict_base_outputs(X)
-
-        reliability_vectors = self.robust_weighting_module.transform_reliability_vector(X)
-
-        attention_weights = self._compute_attention_weights(
-            reliability_vectors=reliability_vectors,
-            model_confidences=self.model_confidences_,
-        )
-
-        weighted_predictions = attention_weights * base_predictions
-
-        if self.use_original_features:
-            meta_features = np.hstack([X, weighted_predictions])
-        else:
-            meta_features = weighted_predictions
-
-        self.test_attention_weights_ = attention_weights
-        self.test_meta_features_ = meta_features
-
-        if hasattr(self.meta_model_, "predict_proba"):
-            return self.meta_model_.predict_proba(meta_features)
-
-        pred = self.meta_model_.predict(meta_features)
-        return np.column_stack([1 - pred, pred])
-
-    def predict(self, X, threshold: float = 0.5):
-        proba = self.predict_proba(X)[:, 1]
-        return (proba >= threshold).astype(int)
-
-    def get_attention_summary(self):
-        if self.train_attention_weights_ is None:
-            raise RuntimeError("Call fit() first.")
-
-        return {
-            "mean_attention_train": self.train_attention_weights_.mean(axis=0),
-            "std_attention_train": self.train_attention_weights_.std(axis=0),
-            "selected_weighting_model": self.selected_weighting_model_,
-            "outlier_ratio": self.outlier_ratio_,
-        }
-
-    def get_model_contributions(self):
-        """
-        Approximate learner contribution by average attention weight.
-        """
-        if self.train_attention_weights_ is None:
-            raise RuntimeError("Call fit() first.")
-
-        mean_att = self.train_attention_weights_.mean(axis=0)
-        total = np.sum(mean_att)
-        if total <= 0:
-            return mean_att
-        return mean_att / total
-
-    def get_params(self, deep=True):
-        return {
-            "n_folds": self.n_folds,
-            "use_original_features": self.use_original_features,
-            "random_state": self.random_state,
-            "base_models": [type(m).__name__ for m in self.base_models],
-            "meta_model": type(self.meta_model).__name__,
-            "selected_weighting_model": self.selected_weighting_model_,
-            "outlier_ratio": self.outlier_ratio_,
-        }
+print(f"\nSaved result file: {save_file}")

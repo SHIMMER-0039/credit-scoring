@@ -44,24 +44,18 @@ from models.aaess_attention_stacking import AAESSAttentionStacking
 # =========================================================
 import os
 
-# =========================================================
-# 0. 动态获取根目录 (解决审稿人提出的 Point 3)
-# =========================================================
-# 获取当前脚本的绝对路径，并向上找两级到达项目根目录 (credit-scoring-main)
-# 这样无论审稿人把项目解压到哪里，代码都能自动定位
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 SEED = 42
 random.seed(SEED)
 np.random.seed(SEED)
 
-# 结果保存路径：credit-scoring-main/outcome/table10/
 SAVE_DIR = os.path.join(BASE_DIR, 'outcome', 'table10')
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 # =========================================================
-# 1. Datasets 动态配置
-# =========================================================
+============================
 DATASETS = [
     {
         "name": "fannie",
@@ -270,9 +264,7 @@ def run_feature_selection(train_x, train_y, valid_x, valid_y, methods):
 
 
 # =========================================================
-# 3. AAESS-LR (LR weighting)
-# =========================================================
-# (保持你原有的 LRWeightingModule 和 AAESSAttentionStackingLR 实现)
+
 class LRWeightingModule:
     def __init__(self, standardize_x=True):
         self.standardize_x = standardize_x
@@ -534,13 +526,6 @@ def build_table10_model(name, pos_weight):
             n_folds=5, random_state=SEED, use_original_features=False,
             meta_model=LogisticRegression(max_iter=1000), verbose=False,
         )
-    # 💡 补全了之前代码中遗漏的 "AAESS" 基础分支
-    elif name == "AAESS":
-        return AAESSAttentionStacking(
-            base_models=[make_lgb(), make_xgb(pos_weight)],
-            n_folds=5, random_state=SEED, use_original_features=False,
-            meta_model=LogisticRegression(max_iter=1000), verbose=False,
-        )
     else:
         raise ValueError(f"Unknown variant: {name}")
 
@@ -624,7 +609,6 @@ for config in DATASETS:
             f"F1: {row['f1']:.6f}"
         )
 
-    # 保存单个数据集的结果
     results_df = pd.DataFrame(results)
 
     csv_path = os.path.join(SAVE_DIR, f"table10_results_{config['name']}.csv")

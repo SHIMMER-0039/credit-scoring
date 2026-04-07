@@ -25,19 +25,23 @@ from sklearn.metrics import (
 import xgboost as xgb
 import lightgbm as lgb
 
-from main.feature_selection import FeatureEvaluator, is_pareto_efficient, evaluate_model
-from main.aaess_attention_stacking import AAESSAttentionStacking
+from models.feature_selection import FeatureEvaluator, is_pareto_efficient, evaluate_model
+from models.aaess_attention_stacking import AAESSAttentionStacking
 
 
 # =========================================================
-# 0. Global Config
-# =========================================================
+
+current_path = os.path.abspath(__file__)
+
+BASE_DIR = os.path.dirname(os.path.dirname(current_path))
+
 SEED = 42
 random.seed(SEED)
 np.random.seed(SEED)
 
-SAVE_DIR = r'D:\study\second\outcome\multi_dataset_aaess'
-os.makedirs(SAVE_DIR, exist_ok=True)
+SAVE_DIR = os.path.join(BASE_DIR, 'outcome', 'multi_dataset_aaess')
+if not os.path.exists(SAVE_DIR):
+    os.makedirs(SAVE_DIR, exist_ok=True)
 
 FEATURE_METHODS = [
     "ClassifierFE",
@@ -48,47 +52,49 @@ FEATURE_METHODS = [
 ]
 
 PARAM_GRID = {
-    "n_estimators": [100,300,500,700,900,1100],
-    "max_depth": [1,2,3,4,5,6,7,8,9,10,11],
-    "learning_rate": [0.01,0.02,0.1,0.2]
+    "n_estimators": [400],
+    "max_depth": [5],
+    "learning_rate": [0.1]
 }
-
-
 FAST_MODE = False
 FAST_MAX_SAMPLES = 50000
 
 # =========================================================
 # 1. Dataset Config
 # =========================================================
+import os
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
 DATASETS = {
-    "bankfear": {
-        "data_file": r'D:\study\credit_scoring_datasets\bankfear.csv',
-        "shuffle_file": r'D:\study\Credit(1)\Credit\shuffle_index\bankfear\shuffle_index.pickle',
-        "target_col": 'loan_status',
-        "drop_cols": ['loan_status', 'member_id'],
-    },
+    # "bankfear": {
+    #     "data_file": os.path.join(BASE_DIR, "data-raw", "bankfear.csv"),
+    #     "shuffle_file": os.path.join(BASE_DIR, "data", "bankfear_shuffle_index.pickle"),
+    #     "target_col": 'loan_status',
+    #     "drop_cols": ['loan_status', 'member_id'],
+    # },
     "gmsc": {
-        "data_file": r'D:\study\credit_scoring_datasets\give_me_some_credit_cleaned.csv',
-        "shuffle_file": r'D:\study\Credit(1)\Credit\shuffle_index\give\shuffle_index.pickle',
+        "data_file": os.path.join(BASE_DIR, "data-raw", "give_me_some_credit_cleaned.csv"),
+        "shuffle_file": os.path.join(BASE_DIR, "data", "give_shuffle_index.pickle"),
         "target_col": 'SeriousDlqin2yrs',
         "drop_cols": ['SeriousDlqin2yrs'],
     },
-    "shandong": {
-        "data_file": r'D:\study\credit_scoring_datasets\shandong.csv',
-        "shuffle_file": r'D:\study\Credit(1)\Credit\shuffle_index\shandong\shuffle_index.pickle',
-        "target_col": 'label',
-        "drop_cols": ['label'],
-    },
-    "fanniemae": {
-        "data_file": r'D:\study\credit_scoring_datasets\FannieMae\2008q1.csv',
-        "shuffle_file": r'D:\study\Credit(1)\Credit\shuffle_index\fannie\shuffle_index.pickle',
-        "target_col": 'DEFAULT',
-        "drop_cols": ['DEFAULT', 'LOAN IDENTIFIER'],
-    }
+    # "shandong": {
+    #     "data_file": os.path.join(BASE_DIR, "data-raw", "shandong.csv"),
+    #     "shuffle_file": os.path.join(BASE_DIR, "data", "shandong_shuffle_index.pickle"),
+    #     "target_col": 'label',
+    #     "drop_cols": ['label'],
+    # },
+    # "fanniemae": {
+    #     "data_file": os.path.join(BASE_DIR, "data-raw", "fannie.csv"),
+    #     "shuffle_file": os.path.join(BASE_DIR, "data", "fannie_shuffle_index.pickle"),
+    #     "target_col": 'DEFAULT',
+    #     "drop_cols": ['DEFAULT', 'LOAN IDENTIFIER'],
+    # }
 }
 
-
-
+SAVE_DIR = os.path.join(BASE_DIR, "outcome", "multi_dataset_aaess")
+os.makedirs(SAVE_DIR, exist_ok=True)
 # =========================================================
 # 2. Helpers
 # =========================================================

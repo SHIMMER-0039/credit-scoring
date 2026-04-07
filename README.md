@@ -17,41 +17,6 @@ The package implements the proposed **Adaptive Attention-Enhanced Sequential Sta
 
 All experiment scripts can be executed independently.
 
----
-
-## REPOSITORY STRUCTURE
-
-```text
-.
-├── data-raw/
-│   ├── Fannie and Bankfear Dataset Readme
-│   ├── australian.csv
-│   ├── give_me_some_credit_cleaned.csv
-│   ├── give_me_some_credit_cleaned.zip
-│   ├── shandong.csv
-│   └── shandong.zip
-├── data/
-│   ├── bankfear_shuffle_index.pickle
-│   ├── fannie_shuffle_index.pickle
-│   ├── give_shuffle_index.pickle
-│   ├── shandong_shuffle_index.pickle
-│   └── shuffle_index.pickle
-├── models/
-│   ├── HO_ablation.py
-│   ├── LGB-FS-OD-RW.py
-│   ├── aaess_attention_stacking.py
-│   ├── feature_ablation.py
-│   ├── feature_selection.py
-│   ├── main.py
-│   ├── outlier_detection.py
-│   └── robust_weighting.py
-├── plots/
-├── result/
-│   └── outcome.zip
-├── tables/
-└── README.md
-```
-
 ### Directory Description
 
 - **`data-raw/`**: raw datasets used in the experiments

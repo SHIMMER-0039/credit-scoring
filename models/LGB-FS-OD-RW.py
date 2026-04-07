@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 import os
+import sys
 import json
 import pickle
 import random
+
+# =========================================================
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
 
 import numpy as np
 import pandas as pd
@@ -14,14 +22,6 @@ from sklearn.metrics import (
     precision_score, recall_score, f1_score,
     brier_score_loss, average_precision_score
 )
-import os
-import sys
-
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-if BASE_DIR not in sys.path:
-    sys.path.insert(0, BASE_DIR)
 
 from models.feature_selection import FeatureEvaluator, is_pareto_efficient, evaluate_model
 from models.outlier_detection import OutlierDetector
@@ -29,16 +29,16 @@ from models.robust_weighting import RobustWeightingModule
 
 
 # =========================================================
-# 0. Config
 # =========================================================
 SEED = 42
 random.seed(SEED)
 np.random.seed(SEED)
 
 DATASET_NAME = "give"
-DATA_FILE = r'D:\study\credit_scoring_datasets\give_me_some_credit_cleaned.csv'
-SHUFFLE_FILE = r'D:\study\Credit(1)\Credit\shuffle_index\give\shuffle_index.pickle'
-SAVE_DIR = r'D:\study\second\outcome\give_grid_lgb_with_fs_od'
+
+DATA_FILE = os.path.join(BASE_DIR, 'data-raw', 'give_me_some_credit_cleaned.csv')
+SHUFFLE_FILE = os.path.join(BASE_DIR, 'data', 'give_shuffle_index.pickle')
+SAVE_DIR = os.path.join(BASE_DIR, 'outcome', 'give_grid_lgb_with_fs_od')
 
 TARGET_COL = 'SeriousDlqin2yrs'
 DROP_COLS = ['SeriousDlqin2yrs']
@@ -52,9 +52,7 @@ FEATURE_METHODS = [
 ]
 
 REMOVE_OUTLIERS = True
-
 ROBUST_MODE = "auto"
-
 FAST_MODE = False
 FAST_MAX_SAMPLES = 50000
 
@@ -245,7 +243,7 @@ else:
 
 
 # =========================================================
-# 4. Robust Weighting 
+# 4. Robust Weighting
 # =========================================================
 
 robust_module = None

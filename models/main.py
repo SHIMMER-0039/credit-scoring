@@ -90,18 +90,18 @@ DATASETS = {
     #     "target_col": 'loan_status',
     #     "drop_cols": ['loan_status', 'member_id'],
     # },
-    "gmsc": {
-        "data_file": os.path.join(BASE_DIR, "data-raw", "give_me_some_credit_cleaned.csv"),
-        "shuffle_file": os.path.join(BASE_DIR, "data", "give_shuffle_index.pickle"),
-        "target_col": 'SeriousDlqin2yrs',
-        "drop_cols": ['SeriousDlqin2yrs'],
-    },
-    # "shandong": {
-    #     "data_file": os.path.join(BASE_DIR, "data-raw", "shandong.csv"),
-    #     "shuffle_file": os.path.join(BASE_DIR, "data", "shandong_shuffle_index.pickle"),
-    #     "target_col": 'label',
-    #     "drop_cols": ['label'],
+    # "gmsc": {
+    #     "data_file": os.path.join(BASE_DIR, "data-raw", "give_me_some_credit_cleaned.csv"),
+    #     "shuffle_file": os.path.join(BASE_DIR, "data", "give_shuffle_index.pickle"),
+    #     "target_col": 'SeriousDlqin2yrs',
+    #     "drop_cols": ['SeriousDlqin2yrs'],
     # },
+    "shandong": {
+        "data_file": os.path.join(BASE_DIR, "data-raw", "shandong.csv"),
+        "shuffle_file": os.path.join(BASE_DIR, "data", "shandong_shuffle_index.pickle"),
+        "target_col": 'label',
+        "drop_cols": ['label'],
+    },
     # "fanniemae": {
     #     "data_file": os.path.join(BASE_DIR, "data-raw", "fannie.csv"),
     #     "shuffle_file": os.path.join(BASE_DIR, "data", "fannie_shuffle_index.pickle"),

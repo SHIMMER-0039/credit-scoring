@@ -56,11 +56,17 @@ if not os.path.exists(SAVE_DIR):
 
 FEATURE_METHODS = [
     "ClassifierFE",
-    "CorrelationFE",
-    "GainRFE",
-    "InfoGainFE",
-    "ReliefFE",
+    # "CorrelationFE",
+    # "GainRFE",
+    # "InfoGainFE",
+    # "ReliefFE",
 ]
+
+# PARAM_GRID = {
+#     "n_estimators": [100,300,500,700,900,1100],
+#     "max_depth": [1,2,3,4,5,6,7,8,9,10,11],
+#     "learning_rate": [0.01,0.02,0.1,0.2]
+# }
 
 PARAM_GRID = {
     "n_estimators": [400],

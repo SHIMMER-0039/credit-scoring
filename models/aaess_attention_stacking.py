@@ -8,8 +8,8 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import brier_score_loss, roc_auc_score
 from sklearn.model_selection import StratifiedKFold
 
-from main.outlier_detection import OutlierDetector
-from main.robust_weighting import RobustWeightingModule
+from models.outlier_detection import OutlierDetector
+from models.robust_weighting import RobustWeightingModule
 
 
 class AAESSAttentionStacking:

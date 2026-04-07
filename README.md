@@ -1,7 +1,6 @@
 
 
-```
-# Replication Package for *Adaptive Voting Stacking with Attention Mechanism for the Enhanced Credit Scoring*
+# Replication Package for Adaptive Voting Stacking with Attention Mechanism for the Enhanced Credit Scoring
 
 **Authors:** Shanshan Jiang, Lingyi Meng, Min Xia
 
@@ -10,6 +9,7 @@
 This repository contains the replication package for the paper *Adaptive Voting Stacking with Attention Mechanism for the Enhanced Credit Scoring*. It includes the source code, raw data files, processed shuffle index files, and output folders required to reproduce the main experimental results reported in the manuscript.
 
 The package implements the proposed **Adaptive Attention-Enhanced Sequential Stacking (AAESS)** framework, together with the experimental workflows used in the paper, including:
+
 - the main AAESS model,
 - feature selection experiments,
 - homogeneous versus heterogeneous stacking comparisons,
@@ -52,7 +52,7 @@ All experiment scripts can be executed independently.
 └── README.md
 ```
 
-### Directory Description
+# Directory Description
 
 - **`data-raw/`**: raw datasets used in the experiments
 - **`data/`**: processed shuffle index files for reproducible train/validation/test splits

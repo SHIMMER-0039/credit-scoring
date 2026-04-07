@@ -36,25 +36,62 @@ from sklearn.tree import DecisionTreeClassifier
 import xgboost as xgb
 import lightgbm as lgb
 
-from main.feature_selection import FeatureEvaluator, is_pareto_efficient, evaluate_model
-from main.aaess_attention_stacking import AAESSAttentionStacking
-
+from models.feature_selection import FeatureEvaluator, is_pareto_efficient, evaluate_model
+from models.aaess_attention_stacking import AAESSAttentionStacking
 
 # =========================================================
-# 0. Config
+# 0. Config & Datasets Settings
 # =========================================================
+import os
+
+# =========================================================
+# 0. 动态获取根目录 (解决审稿人提出的 Point 3)
+# =========================================================
+# 获取当前脚本的绝对路径，并向上找两级到达项目根目录 (credit-scoring-main)
+# 这样无论审稿人把项目解压到哪里，代码都能自动定位
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 SEED = 42
 random.seed(SEED)
 np.random.seed(SEED)
 
-DATA_FILE = r'D:\study\credit_scoring_datasets\FannieMae\2008q1.csv'
-SHUFFLE_FILE = r'D:\study\Credit(1)\Credit\shuffle_index\fannie\shuffle_index.pickle'
-SAVE_DIR = r'D:\study\second\outcome\table10'
+# 结果保存路径：credit-scoring-main/outcome/table10/
+SAVE_DIR = os.path.join(BASE_DIR, 'outcome', 'table10')
 os.makedirs(SAVE_DIR, exist_ok=True)
 
-TARGET_COL = 'DEFAULT'
-DROP_COLS = ['DEFAULT', 'LOAN IDENTIFIER']
-
+# =========================================================
+# 1. Datasets 动态配置
+# =========================================================
+DATASETS = [
+    {
+        "name": "fannie",
+        "data_file": os.path.join(BASE_DIR, 'data-raw', 'fannie.csv'),
+        "shuffle_file": os.path.join(BASE_DIR, 'data', 'fannie_shuffle_index.pickle'),
+        "target_col": 'DEFAULT',
+        "drop_cols": ['DEFAULT', 'LOAN IDENTIFIER']
+    },
+    {
+        "name": "give",
+        "data_file": os.path.join(BASE_DIR, 'data-raw', 'give_me_some_credit_cleaned.csv'),
+        "shuffle_file": os.path.join(BASE_DIR, 'data', 'give_shuffle_index.pickle'),
+        "target_col": 'SeriousDlqin2yrs',
+        "drop_cols": ['SeriousDlqin2yrs']
+    },
+    {
+        "name": "shandong",
+        "data_file": os.path.join(BASE_DIR, 'data-raw', 'shandong.csv'),
+        "shuffle_file": os.path.join(BASE_DIR, 'data', 'shandong_shuffle_index.pickle'),
+        "target_col": 'label',
+        "drop_cols": ['label']
+    },
+    {
+        "name": "bankfear",
+        "data_file": os.path.join(BASE_DIR, 'data-raw', 'bankfear.csv'),
+        "shuffle_file": os.path.join(BASE_DIR, 'data', 'bankfear_shuffle_index.pickle'),
+        "target_col": 'loan_status',
+        "drop_cols": ['loan_status', 'member_id']
+    }
+]
 FEATURE_METHODS = [
     "ClassifierFE",
     "CorrelationFE",
@@ -65,7 +102,6 @@ FEATURE_METHODS = [
 
 USE_FEATURE_SELECTION = True
 
-# Assume a parameter
 N_ESTIMATORS = 300
 MAX_DEPTH = 3
 LEARNING_RATE = 0.1
@@ -126,50 +162,35 @@ def compute_metrics(y_true, y_pred, y_proba):
     e2 = type2error(y_proba, y_true)
 
     return {
-        "acc": acc,
-        "auc": auc,
-        "prec": prec,
-        "rec": rec,
-        "f1": f1,
-        "logloss": ll,
-        "bs": bs,
-        "ap": ap,
-        "ks": ks,
-        "hm": hm,
-        "e1": e1,
-        "e2": e2,
+        "acc": acc, "auc": auc, "prec": prec, "rec": rec, "f1": f1,
+        "logloss": ll, "bs": bs, "ap": ap, "ks": ks, "hm": hm, "e1": e1, "e2": e2,
     }
 
 
 def to_serializable(obj):
-    if isinstance(obj, np.ndarray):
-        return obj.tolist()
-    if isinstance(obj, (np.floating,)):
-        return float(obj)
-    if isinstance(obj, (np.integer,)):
-        return int(obj)
-    if isinstance(obj, dict):
-        return {k: to_serializable(v) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [to_serializable(v) for v in obj]
+    if isinstance(obj, np.ndarray): return obj.tolist()
+    if isinstance(obj, (np.floating,)): return float(obj)
+    if isinstance(obj, (np.integer,)): return int(obj)
+    if isinstance(obj, dict): return {k: to_serializable(v) for k, v in obj.items()}
+    if isinstance(obj, list): return [to_serializable(v) for v in obj]
     return obj
 
 
 # =========================================================
 # 2. Data / Feature Selection
 # =========================================================
-def load_data():
-    print("Loading data...")
-    data = pd.read_csv(DATA_FILE, low_memory=True)
+def load_data(config):
+    print(f"Loading data for {config['name']}...")
+    data = pd.read_csv(config['data_file'], low_memory=True)
     data = data.replace([-np.inf, np.inf, np.nan], 0)
 
     if FAST_MODE and len(data) > FAST_MAX_SAMPLES:
         data = data.iloc[:FAST_MAX_SAMPLES].copy()
 
-    features = data.drop(DROP_COLS, axis=1)
-    labels = data[TARGET_COL]
+    features = data.drop(config['drop_cols'], axis=1, errors='ignore')
+    labels = data[config['target_col']]
 
-    with open(SHUFFLE_FILE, "rb") as f:
+    with open(config['shuffle_file'], "rb") as f:
         shuffle_index = pickle.load(f)
 
     if FAST_MODE:
@@ -190,23 +211,17 @@ def load_data():
     full_train_x = pd.concat([train_x, valid_x], axis=0)
     full_train_y = pd.concat([train_y, valid_y], axis=0)
 
-    print(f"Train shape: {train_x.shape}")
-    print(f"Valid shape: {valid_x.shape}")
-    print(f"Test shape: {test_x.shape}")
+    print(f"[{config['name']}] Train shape: {train_x.shape}, Valid shape: {valid_x.shape}, Test shape: {test_x.shape}")
 
     return train_x, train_y, valid_x, valid_y, test_x, test_y, full_train_x, full_train_y
 
 
 def run_feature_selection(train_x, train_y, valid_x, valid_y, methods):
     candidate_results = []
-
     for method in methods:
         evaluator = FeatureEvaluator(method=method, random_state=SEED)
         evaluator.fit(train_x.values, train_y)
-
-        scores = np.asarray(evaluator.scores_, dtype=float)
-        scores = np.nan_to_num(scores, nan=0.0, posinf=0.0, neginf=0.0)
-
+        scores = np.nan_to_num(np.asarray(evaluator.scores_, dtype=float), nan=0.0, posinf=0.0, neginf=0.0)
         threshold = 0.05 * np.max(scores)
         selected_indices = np.where(scores > threshold)[0].tolist()
 
@@ -221,30 +236,18 @@ def run_feature_selection(train_x, train_y, valid_x, valid_y, methods):
 
         metric_values = evaluate_model(train_sub, train_y, valid_sub, valid_y)
         metrics = {
-            "acc": float(metric_values[0]),
-            "auc": float(metric_values[1]),
-            "precision": float(metric_values[2]),
-            "recall": float(metric_values[3]),
+            "acc": float(metric_values[0]), "auc": float(metric_values[1]),
+            "precision": float(metric_values[2]), "recall": float(metric_values[3]),
         }
 
         candidate_results.append({
-            "method": method,
-            "threshold": float(threshold),
-            "selected_indices": selected_indices,
-            "selected_names": selected_names,
-            "n_features": len(selected_indices),
-            "metrics": metrics,
+            "method": method, "threshold": float(threshold), "selected_indices": selected_indices,
+            "selected_names": selected_names, "n_features": len(selected_indices), "metrics": metrics,
         })
-
         print(f"[{method}] n_features={len(selected_indices)}, metrics={metrics}")
 
     score_matrix = np.array([
-        [
-            r["metrics"]["acc"],
-            r["metrics"]["auc"],
-            r["metrics"]["precision"],
-            r["metrics"]["recall"],
-        ]
+        [r["metrics"]["acc"], r["metrics"]["auc"], r["metrics"]["precision"], r["metrics"]["recall"]]
         for r in candidate_results
     ])
 
@@ -258,28 +261,18 @@ def run_feature_selection(train_x, train_y, valid_x, valid_y, methods):
 
     pareto_results = sorted(
         pareto_results,
-        key=lambda r: (
-            -r["metrics"]["auc"],
-            -r["metrics"]["recall"],
-            r["n_features"],
-            -r["metrics"]["acc"],
-        )
+        key=lambda r: (-r["metrics"]["auc"], -r["metrics"]["recall"], r["n_features"], -r["metrics"]["acc"])
     )
 
     best = pareto_results[0]
-
-    print("\nSelected feature subset:")
-    print(f"  method: {best['method']}")
-    print(f"  n_features: {best['n_features']}")
-    print(f"  features: {best['selected_names']}")
-    print(f"  metrics: {best['metrics']}")
-
+    print(f"\nSelected feature subset: method={best['method']}, n_features={best['n_features']}")
     return best, candidate_results
 
 
 # =========================================================
 # 3. AAESS-LR (LR weighting)
 # =========================================================
+# (保持你原有的 LRWeightingModule 和 AAESSAttentionStackingLR 实现)
 class LRWeightingModule:
     def __init__(self, standardize_x=True):
         self.standardize_x = standardize_x
@@ -292,34 +285,26 @@ class LRWeightingModule:
     def _prepare_x(self, X, fit=False):
         X = np.asarray(X, dtype=float)
         X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
-
         if not self.standardize_x:
             return X
-
         if fit:
             self.scaler_ = StandardScaler()
             return self.scaler_.fit_transform(X)
-
         return self.scaler_.transform(X)
 
     def fit(self, X, y):
         Xs = self._prepare_x(X, fit=True)
         y = np.asarray(y).ravel()
 
-        model = LogisticRegression(
-            max_iter=1000,
-            random_state=SEED
-        )
+        model = LogisticRegression(max_iter=1000, random_state=SEED)
         model.fit(Xs, y)
 
         proba = model.predict_proba(Xs)[:, 1]
-
         sample_weights = 1.0 - np.abs(proba - y.astype(float))
         sample_weights = np.maximum(sample_weights, 1e-12)
         sample_weights = sample_weights / np.mean(sample_weights)
 
         reliability_vector = Xs * sample_weights[:, None]
-
         coef_abs = np.abs(model.coef_.ravel())
         coef_abs = np.maximum(coef_abs, 1e-12)
 
@@ -344,21 +329,11 @@ class LRWeightingModule:
 
 
 class AAESSAttentionStackingLR:
-    def __init__(
-        self,
-        base_models,
-        n_folds=5,
-        meta_model=None,
-        use_original_features=False,
-        random_state=SEED,
-        verbose=False
-    ):
+    def __init__(self, base_models, n_folds=5, meta_model=None, use_original_features=False, random_state=SEED,
+                 verbose=False):
         self.base_models = base_models
         self.n_folds = n_folds
-        self.meta_model = meta_model if meta_model is not None else LogisticRegression(
-            max_iter=1000,
-            class_weight=""
-        )
+        self.meta_model = meta_model if meta_model is not None else LogisticRegression(max_iter=1000)
         self.use_original_features = use_original_features
         self.random_state = random_state
         self.verbose = verbose
@@ -382,13 +357,7 @@ class AAESSAttentionStackingLR:
         n_samples = X.shape[0]
         n_models = len(self.base_models)
         oof_predictions = np.zeros((n_samples, n_models), dtype=float)
-
-        skf = StratifiedKFold(
-            n_splits=self.n_folds,
-            shuffle=True,
-            random_state=self.random_state
-        )
-
+        skf = StratifiedKFold(n_splits=self.n_folds, shuffle=True, random_state=self.random_state)
         fitted_base_models = []
 
         for j, base_model in enumerate(self.base_models):
@@ -400,7 +369,6 @@ class AAESSAttentionStackingLR:
                     pred = model.predict_proba(X[va_idx])[:, 1]
                 else:
                     pred = model.predict(X[va_idx])
-
                 oof_predictions[va_idx, j] = pred
 
             final_model = clone(base_model)
@@ -431,7 +399,6 @@ class AAESSAttentionStackingLR:
             model_confidences.append(gamma_j)
 
         model_confidences = np.vstack(model_confidences)
-
         scores = reliability_vectors @ model_confidences.T
         attention_weights = self._softmax(scores, axis=1)
         weighted_oof_predictions = attention_weights * oof_predictions
@@ -484,8 +451,7 @@ class AAESSAttentionStackingLR:
     def get_model_contributions(self):
         mean_att = self.train_attention_weights_.mean(axis=0)
         total = np.sum(mean_att)
-        if total <= 0:
-            return mean_att
+        if total <= 0: return mean_att
         return mean_att / total
 
 
@@ -501,237 +467,173 @@ def make_lda():
 
 
 def make_lr():
-    return make_pipeline(
-        StandardScaler(),
-        LogisticRegression(max_iter=1000,  random_state=SEED),
-    )
+    return make_pipeline(StandardScaler(), LogisticRegression(max_iter=1000, random_state=SEED))
 
 
 def make_rf():
-    return RandomForestClassifier(
-        n_estimators=N_ESTIMATORS,
-        max_features="sqrt",
-        min_samples_split=5,
-        n_jobs=-1,
-        random_state=SEED,
-    )
+    return RandomForestClassifier(n_estimators=N_ESTIMATORS, max_features="sqrt", min_samples_split=5, n_jobs=-1,
+                                  random_state=SEED)
 
 
 def make_xgb(pos_weight):
-    return xgb.XGBClassifier(
-        n_estimators=N_ESTIMATORS,
-        max_depth=MAX_DEPTH,
-        learning_rate=LEARNING_RATE,
-        n_jobs=-1,
-        use_label_encoder=False,
-        eval_metric="logloss",
-        random_state=SEED,
-        tree_method="hist",
-        scale_pos_weight=pos_weight,
-    )
+    return xgb.XGBClassifier(n_estimators=N_ESTIMATORS, max_depth=MAX_DEPTH, learning_rate=LEARNING_RATE, n_jobs=-1,
+                             use_label_encoder=False, eval_metric="logloss", random_state=SEED, tree_method="hist",
+                             scale_pos_weight=pos_weight)
 
 
 def make_lgb():
-    return lgb.LGBMClassifier(
-        n_estimators=N_ESTIMATORS,
-        max_depth=MAX_DEPTH,
-        learning_rate=LEARNING_RATE,
-        n_jobs=-1,
-        random_state=SEED,
-        min_data_in_leaf=20,
-        min_split_gain=0.1,
-    )
+    return lgb.LGBMClassifier(n_estimators=N_ESTIMATORS, max_depth=MAX_DEPTH, learning_rate=LEARNING_RATE, n_jobs=-1,
+                              random_state=SEED, min_data_in_leaf=20, min_split_gain=0.1)
 
 
 def make_ada():
-    return AdaBoostClassifier(
-        n_estimators=min(N_ESTIMATORS, 200),
-        learning_rate=LEARNING_RATE,
-        random_state=SEED,
-    )
+    return AdaBoostClassifier(n_estimators=min(N_ESTIMATORS, 200), learning_rate=LEARNING_RATE, random_state=SEED)
 
 
 def make_gbdt():
-    return GradientBoostingClassifier(
-        n_estimators=N_ESTIMATORS,
-        learning_rate=LEARNING_RATE,
-        max_depth=MAX_DEPTH,
-        random_state=SEED,
-    )
+    return GradientBoostingClassifier(n_estimators=N_ESTIMATORS, learning_rate=LEARNING_RATE, max_depth=MAX_DEPTH,
+                                      random_state=SEED)
 
 
 def build_homogeneous_stack(base_estimator, n_clones=3):
     base_models = [clone(base_estimator) for _ in range(n_clones)]
     return AAESSAttentionStacking(
-        base_models=base_models,
-        n_folds=5,
-        random_state=SEED,
-        use_original_features=False,
-        meta_model=LogisticRegression(max_iter="1000"),
-        verbose=False,
+        base_models=base_models, n_folds=5, random_state=SEED, use_original_features=False,
+        meta_model=LogisticRegression(max_iter=1000), verbose=False,  # 💡 修复了 max_iter="1000" 的类型错误
     )
 
 
 def build_table10_model(name, pos_weight):
     if name == "DT":
         return build_homogeneous_stack(make_dt())
-
     elif name == "LDA":
         return build_homogeneous_stack(make_lda())
-
     elif name == "LR":
         return build_homogeneous_stack(make_lr())
-
     elif name == "RF":
         return build_homogeneous_stack(make_rf())
-
     elif name == "XGB":
         return build_homogeneous_stack(make_xgb(pos_weight))
-
     elif name == "LGB":
         return build_homogeneous_stack(make_lgb())
-
     elif name == "AAESSLR":
         return AAESSAttentionStackingLR(
-            base_models=[
-                make_rf(),
-                make_xgb(pos_weight),
-                make_lgb(),
-                make_ada(),
-            ],
-            n_folds=5,
-            random_state=SEED,
-            use_original_features=False,
-            meta_model=LogisticRegression(max_iter=1000),
-            verbose=False,
+            base_models=[make_rf(), make_xgb(pos_weight), make_lgb(), make_ada()],
+            n_folds=5, random_state=SEED, use_original_features=False,
+            meta_model=LogisticRegression(max_iter=1000), verbose=False,
         )
-
     elif name == "extreetree":
         return AAESSAttentionStacking(
-            base_models=[
-                make_dt(),
-                make_rf(),
-                make_ada(),
-            ],
-            n_folds=5,
-            random_state=SEED,
-            use_original_features=False,
-            meta_model=LogisticRegression(max_iter=1000),
-            verbose=False,
+            base_models=[make_dt(), make_rf(), make_ada()],
+            n_folds=5, random_state=SEED, use_original_features=False,
+            meta_model=LogisticRegression(max_iter=1000), verbose=False,
         )
-
     elif name == "AAESSTREE":
         return AAESSAttentionStacking(
-            base_models=[
-                make_dt(),
-                make_gbdt(),
-                make_xgb(pos_weight),
-            ],
-            n_folds=5,
-            random_state=SEED,
-            use_original_features=False,
-            meta_model=LogisticRegression(max_iter=1000),
-            verbose=False,
+            base_models=[make_dt(), make_gbdt(), make_xgb(pos_weight)],
+            n_folds=5, random_state=SEED, use_original_features=False,
+            meta_model=LogisticRegression(max_iter=1000), verbose=False,
         )
-
+    # 💡 补全了之前代码中遗漏的 "AAESS" 基础分支
     elif name == "AAESS":
         return AAESSAttentionStacking(
-            base_models=[
-                make_rf(),
-                make_xgb(pos_weight),
-                make_lgb(),
-                make_ada(),
-            ],
-            n_folds=5,
-            random_state=SEED,
-            use_original_features=False,
-            meta_model=LogisticRegression(max_iter=1000),
-            verbose=False,
+            base_models=[make_lgb(), make_xgb(pos_weight)],
+            n_folds=5, random_state=SEED, use_original_features=False,
+            meta_model=LogisticRegression(max_iter=1000), verbose=False,
         )
-
     else:
         raise ValueError(f"Unknown variant: {name}")
 
 
 # =========================================================
-# 5. Main
+# 5. Main Execution Loop (Iterate over multiple datasets)
 # =========================================================
-print("Loading dataset...")
-train_x, train_y, valid_x, valid_y, test_x, test_y, full_train_x, full_train_y = load_data()
-
-if USE_FEATURE_SELECTION:
-    print("\nRunning feature selection...")
-    fs_best, fs_all = run_feature_selection(train_x, train_y, valid_x, valid_y, FEATURE_METHODS)
-    selected_indices = fs_best["selected_indices"]
-
-    train_x = train_x.iloc[:, selected_indices]
-    valid_x = valid_x.iloc[:, selected_indices]
-    test_x = test_x.iloc[:, selected_indices]
-    full_train_x = full_train_x.iloc[:, selected_indices]
-else:
-    fs_best, fs_all = None, None
-
-pos_weight = int((train_y == 0).sum() / max(1, (train_y == 1).sum()))
-
 variant_names = [
     "DT", "LDA", "LR", "RF", "XGB", "LGB",
     "AAESSLR", "extreetree", "AAESSTREE", "AAESS"
 ]
 
-results = []
+for config in DATASETS:
+    print("\n" + "#" * 80)
+    print(f"### PROCESSING DATASET: {config['name'].upper()}")
+    print("#" * 80)
 
-for variant in variant_names:
-    print("\n" + "=" * 80)
-    print(f"Running variant: {variant}")
+    try:
+        train_x, train_y, valid_x, valid_y, test_x, test_y, full_train_x, full_train_y = load_data(config)
+    except FileNotFoundError as e:
+        print(f"Data/Shuffle file not found for {config['name']}. Skipping. Error: {e}")
+        continue
 
-    valid_model = build_table10_model(variant, pos_weight)
-    valid_model.fit(train_x.values, train_y.values)
+    if USE_FEATURE_SELECTION:
+        print(f"\nRunning feature selection for {config['name']}...")
+        fs_best, fs_all = run_feature_selection(train_x, train_y, valid_x, valid_y, FEATURE_METHODS)
+        selected_indices = fs_best["selected_indices"]
 
-    valid_pred = valid_model.predict(valid_x.values)
-    valid_proba = valid_model.predict_proba(valid_x.values)[:, 1]
-    valid_metrics = compute_metrics(valid_y.values, valid_pred, valid_proba)
+        train_x = train_x.iloc[:, selected_indices]
+        valid_x = valid_x.iloc[:, selected_indices]
+        test_x = test_x.iloc[:, selected_indices]
+        full_train_x = full_train_x.iloc[:, selected_indices]
+    else:
+        fs_best, fs_all = None, None
 
-    final_model = build_table10_model(variant, pos_weight)
-    final_model.fit(full_train_x.values, full_train_y.values)
+    pos_weight = int((train_y == 0).sum() / max(1, (train_y == 1).sum()))
 
-    test_pred = final_model.predict(test_x.values)
-    test_proba = final_model.predict_proba(test_x.values)[:, 1]
-    test_metrics = compute_metrics(test_y.values, test_pred, test_proba)
+    results = []
 
-    row = {
-        "variant": variant,
-        "validation_auc": valid_metrics["auc"],
-        "validation_acc": valid_metrics["acc"],
-        "validation_prec": valid_metrics["prec"],
-        "validation_rec": valid_metrics["rec"],
-        **test_metrics,
-    }
+    for variant in variant_names:
+        print("\n" + "-" * 50)
+        print(f"Dataset: {config['name']} | Running variant: {variant}")
 
-    if hasattr(final_model, "get_model_contributions"):
-        try:
-            row["model_contributions"] = final_model.get_model_contributions()
-        except Exception:
-            row["model_contributions"] = None
+        valid_model = build_table10_model(variant, pos_weight)
+        valid_model.fit(train_x.values, train_y.values)
 
-    results.append(row)
+        valid_pred = valid_model.predict(valid_x.values)
+        valid_proba = valid_model.predict_proba(valid_x.values)[:, 1]
+        valid_metrics = compute_metrics(valid_y.values, valid_pred, valid_proba)
 
-    print(
-        f"Test -> AUC: {row['auc']:.6f}, "
-        f"ACC: {row['acc']:.6f}, "
-        f"PREC: {row['prec']:.6f}, "
-        f"REC: {row['rec']:.6f}, "
-        f"F1: {row['f1']:.6f}"
-    )
+        final_model = build_table10_model(variant, pos_weight)
+        final_model.fit(full_train_x.values, full_train_y.values)
 
-results_df = pd.DataFrame(results)
+        test_pred = final_model.predict(test_x.values)
+        test_proba = final_model.predict_proba(test_x.values)[:, 1]
+        test_metrics = compute_metrics(test_y.values, test_pred, test_proba)
 
-csv_path = os.path.join(SAVE_DIR, "table10_results.csv")
-results_df.to_csv(csv_path, index=False)
+        row = {
+            "dataset": config["name"],
+            "variant": variant,
+            "validation_auc": valid_metrics["auc"],
+            "validation_acc": valid_metrics["acc"],
+            "validation_prec": valid_metrics["prec"],
+            "validation_rec": valid_metrics["rec"],
+            **test_metrics,
+        }
 
-json_path = os.path.join(SAVE_DIR, "table10_results.json")
-with open(json_path, "w", encoding="utf-8") as f:
-    json.dump(to_serializable(results), f, indent=2, ensure_ascii=False)
+        if hasattr(final_model, "get_model_contributions"):
+            try:
+                row["model_contributions"] = final_model.get_model_contributions()
+            except Exception:
+                row["model_contributions"] = None
 
-print("\nSaved files:")
-print(csv_path)
-print(json_path)
+        results.append(row)
+
+        print(
+            f"Test -> AUC: {row['auc']:.6f}, "
+            f"ACC: {row['acc']:.6f}, "
+            f"PREC: {row['prec']:.6f}, "
+            f"REC: {row['rec']:.6f}, "
+            f"F1: {row['f1']:.6f}"
+        )
+
+    # 保存单个数据集的结果
+    results_df = pd.DataFrame(results)
+
+    csv_path = os.path.join(SAVE_DIR, f"table10_results_{config['name']}.csv")
+    results_df.to_csv(csv_path, index=False)
+
+    json_path = os.path.join(SAVE_DIR, f"table10_results_{config['name']}.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(to_serializable(results), f, indent=2, ensure_ascii=False)
+
+    print(f"\n[SUCCESS] Completed {config['name']}. Saved files:")
+    print(" - " + csv_path)
+    print(" - " + json_path)

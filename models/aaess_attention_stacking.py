@@ -1,13 +1,18 @@
 # main/aaess_attention_stacking.py
 
-from __future__ import annotations
 
+from __future__ import annotations
+import os
 import numpy as np
 from sklearn.base import clone
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import brier_score_loss, roc_auc_score
 from sklearn.model_selection import StratifiedKFold
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+import sys
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
 from models.outlier_detection import OutlierDetector
 from models.robust_weighting import RobustWeightingModule
 

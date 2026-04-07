@@ -56,10 +56,10 @@ if not os.path.exists(SAVE_DIR):
 
 FEATURE_METHODS = [
     "ClassifierFE",
-    # "CorrelationFE",
-    # "GainRFE",
-    # "InfoGainFE",
-    # "ReliefFE",
+    "CorrelationFE",
+    "GainRFE",
+    "InfoGainFE",
+    "ReliefFE",
 ]
 
 # PARAM_GRID = {

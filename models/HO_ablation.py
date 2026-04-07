@@ -35,17 +35,24 @@ from sklearn.tree import DecisionTreeClassifier
 
 import xgboost as xgb
 import lightgbm as lgb
+import os
 
+import os
+import sys
+
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
 from models.feature_selection import FeatureEvaluator, is_pareto_efficient, evaluate_model
 from models.aaess_attention_stacking import AAESSAttentionStacking
 
 # =========================================================
 # 0. Config & Datasets Settings
 # =========================================================
-import os
 
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 SEED = 42
 random.seed(SEED)
@@ -55,7 +62,7 @@ SAVE_DIR = os.path.join(BASE_DIR, 'outcome', 'table10')
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 # =========================================================
-============================
+
 DATASETS = [
     {
         "name": "fannie",

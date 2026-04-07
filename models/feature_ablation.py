@@ -21,40 +21,54 @@ import xgboost as xgb
 import lightgbm as lgb
 
 # === Paths ===
-root_path    = 'D:/study/Credit(1)/Credit/'
-dataset_path = r'D:/study/credit_scoring_datasets/'
-shuffle_path = r'D:/study/Credit(1)/Credit/shuffle_index/'
-save_path    = r'D:/study/second/outcome/all_methods/'
+import os
+
+# =========================================================
+
+# =========================================================
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+dataset_root = os.path.join(BASE_DIR, 'data-raw')      
+shuffle_root = os.path.join(BASE_DIR, 'data')         
+save_path    = os.path.join(BASE_DIR, 'outcome', 'all_methods')
+
 os.makedirs(save_path, exist_ok=True)
 
-# === Dataset configurations ===
+# =========================================================
+
+# =========================================================
 datasets = [
     {
         'name': 'give',
-        'file': 'give_me_some_credit_cleaned.csv',
+        'file': os.path.join(dataset_root, 'give_me_some_credit_cleaned.csv'),
+        'shuffle': os.path.join(shuffle_root, 'give_shuffle_index.pickle'),
         'label': 'SeriousDlqin2yrs',
         'drop': []
     },
     {
         'name': 'shandong',
-        'file': 'shandong.csv',
+        'file': os.path.join(dataset_root, 'shandong.csv'),
+        'shuffle': os.path.join(shuffle_root, 'shandong_shuffle_index.pickle'),
         'label': 'label',
         'drop': []
     },
     {
         'name': 'fannie',
-        'file': os.path.join('FannieMae','2008q1.csv'),
+        'file': os.path.join(dataset_root, 'FannieMae', '2008q1.csv'),
+        'shuffle': os.path.join(shuffle_root, 'fannie_shuffle_index.pickle'),
         'label': 'DEFAULT',
         'drop': ['LOAN IDENTIFIER']
     },
     {
         'name': 'bankfear',
-        'file': 'bankfear.csv',
+        'file': os.path.join(dataset_root, 'bankfear.csv'),
+        'shuffle': os.path.join(shuffle_root, 'bankfear_shuffle_index.pickle'),
         'label': 'loan_status',
         'drop': ['member_id']
     }
 ]
-
 # === Methods to evaluate ===
 def get_classifier(name):
     if name == 'LR':
